@@ -1,4 +1,5 @@
 mod cli;
+mod profilers;
 mod schedulers;
 
 use crate::cli::Args;
@@ -6,7 +7,7 @@ use crate::schedulers::slurm::SlurmScheduler;
 
 fn main() {
     let args = Args::parse();
-    let exporter = SlurmScheduler {};
+    let scheduler = SlurmScheduler {};
 
     if args.sys_job {
         println!("Sys job is running");
