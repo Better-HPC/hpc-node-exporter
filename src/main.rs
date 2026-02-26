@@ -7,7 +7,7 @@ use crate::schedulers::HpcScheduler;
 
 fn main() {
     let args = Args::parse();
-    let scheduler = SlurmScheduler {};
+    let scheduler = SlurmScheduler::default();
 
     if args.sys_job {
         println!("Sys job is running");
@@ -25,7 +25,14 @@ fn main() {
         println!("Nvidia node is running");
     }
 
-    for p in scheduler.get_processes() {
-        println!("{} {} {} {}", p.scheduler, p.jobid, p.stepid, p.pid)
+    match scheduler.get_processes() {
+        Ok(processes) => {
+            for p in processes {
+                println!("{} {} {} {}", p.scheduler, p.jobid, p.stepid, p.pid);
+            }
+        }
+        Err(e) => {
+            eprintln!("failed to fetch job pids: {e}");
+        }
     }
 }

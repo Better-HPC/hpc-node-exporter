@@ -13,13 +13,15 @@
 //! Pending processes are represented by Slurm as PID `-1` and are excluded
 //! from the results.
 
+use std::error::Error;
 use std::io;
 use std::process::Command;
 
 use crate::schedulers::{HpcProcess, HpcScheduler};
 
 /// A [`HpcScheduler`] that discovers jobs via the Slurm `scontrol` CLI.
-pub struct SlurmScheduler {}
+#[derive(Debug, Default)]
+pub struct SlurmScheduler;
 
 impl SlurmScheduler {
     /// Execute `scontrol listpids` and return the output lines.
@@ -79,15 +81,10 @@ impl SlurmScheduler {
 
 impl HpcScheduler for SlurmScheduler {
     /// Discover active HPC jobs and return their PIDs.
-    fn get_processes(&self) -> Vec<HpcProcess> {
-        // Fetch job data as reported by `scontrol`
-        let lines = SlurmScheduler::fetch_scontrol_lines().unwrap_or_else(|e| {
-            eprintln!("failed to fetch job pids: {e}");
-            Vec::new()
-        });
+    fn get_processes(&self) -> Result<Vec<HpcProcess>, Box<dyn Error>> {
+        let lines = SlurmScheduler::fetch_scontrol_lines()?;
 
-        // Parse scontrol output into HpcProcess instances
-        lines
+        Ok(lines
             .iter()
             .filter_map(|line| SlurmScheduler::parse_scontrol_line(line))
             .map(|(jobid, stepid, pid)| HpcProcess {
@@ -96,6 +93,6 @@ impl HpcScheduler for SlurmScheduler {
                 stepid,
                 pid,
             })
-            .collect()
+            .collect())
     }
 }
