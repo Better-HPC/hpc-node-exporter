@@ -6,3 +6,4 @@ description = "A job-level telemetry agent for HPC clusters."
 
 [dependencies]
 clap = { version = "4.5.60", features = ["derive"] }
+gethostname = "0.5"

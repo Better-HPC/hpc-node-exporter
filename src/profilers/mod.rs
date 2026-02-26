@@ -1,3 +1,10 @@
+pub mod sys_node;
+
+use std::error::Error;
+use std::sync::Arc;
+
+use crate::schedulers::HpcProcess;
+
 /// A single node telemetry measurement.
 ///
 /// Each `Metric` carries a metric name, the hostname it was collected on,
@@ -39,4 +46,27 @@ impl Metric {
             }
         }
     }
+}
+
+/// Trait for collecting hardware telemetry metrics.
+///
+/// Implementors are responsible for gathering metrics from a specific
+/// hardware domain and scope. hardware domain (e.g., CPU/memory system
+/// metrics, NVIDIA GPU metrics).
+pub trait Profiler {
+    /// Check whether this profiler is supported on the current system.
+    /// Implementors should check for the presence of required drivers, tools, and interfaces.
+    fn is_supported(&self) -> Result<(), String>;
+
+    /// Collect metrics and return them as a vector of [`Metric`] values.
+    ///
+    /// # Arguments
+    ///
+    /// * `hostname` - The hostname to tag metrics with.
+    /// * `processes` - The active HPC processes running on the host machine.
+    fn collect_metrics(
+        &self,
+        hostname: &Arc<str>,
+        processes: &[HpcProcess],
+    ) -> Result<Vec<Metric>, Box<dyn Error>>;
 }
