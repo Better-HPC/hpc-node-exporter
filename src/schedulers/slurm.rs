@@ -81,30 +81,21 @@ impl HpcScheduler for SlurmScheduler {
     /// Discover active HPC jobs and return their PIDs.
     fn get_processes(&self) -> Vec<HpcProcess> {
         // Fetch job data as reported by `scontrol`
-        let lines = match SlurmScheduler::fetch_scontrol_lines() {
-            Ok(lines) => lines,
-            Err(e) => {
-                eprintln!("failed to fetch job pids: {}", e);
-                return Vec::new();
-            }
-        };
+        let lines = SlurmScheduler::fetch_scontrol_lines().unwrap_or_else(|e| {
+            eprintln!("failed to fetch job pids: {e}");
+            Vec::new()
+        });
 
-        // Parse scontrol output
-        let mut processes: Vec<HpcProcess> = Vec::new();
-        for line in &lines {
-            let (jobid, stepid, pid) = match SlurmScheduler::parse_scontrol_line(line) {
-                Some(parsed) => parsed,
-                None => continue,
-            };
-
-            processes.push(HpcProcess {
+        // Parse scontrol output into HpcProcess instances
+        lines
+            .iter()
+            .filter_map(|line| SlurmScheduler::parse_scontrol_line(line))
+            .map(|(jobid, stepid, pid)| HpcProcess {
                 scheduler: "Slurm",
                 jobid,
                 stepid,
                 pid,
             })
-        }
-
-        processes
+            .collect()
     }
 }

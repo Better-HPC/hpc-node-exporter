@@ -3,9 +3,10 @@
 /// Each `Metric` carries a metric name, the hostname it was collected on,
 /// an optional Slurm job/step identifier for job-level attribution, and
 /// the observed numeric value.
+#[derive(Debug)]
 pub struct Metric {
     pub name: &'static str,
-    pub hostname: &'static str,
+    pub hostname: Arc<str>,
     pub jobid: Option<String>,
     pub stepid: Option<String>,
     pub value: f64,

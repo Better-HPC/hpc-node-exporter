@@ -1,6 +1,7 @@
 pub mod slurm;
 
 /// A system process being run by an HPC scheduler.
+#[derive(Debug)]
 pub struct HpcProcess {
     pub scheduler: &'static str,
     pub jobid: String,

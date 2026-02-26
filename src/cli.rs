@@ -3,7 +3,7 @@
 use clap::Parser;
 
 /// Parsed command-line arguments.
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(
     name = "keystone-exporter",
     about = "A job-aware Prometheus exporter for the Keystone HPC platform.",
