@@ -13,17 +13,15 @@
 //! Pending processes are represented by Slurm as PID `-1` and are excluded
 //! from the results.
 
-use std::collections::HashMap;
 use std::io;
 use std::process::Command;
 
-use crate::schedulers::{HpcJob, HpcScheduler};
+use crate::schedulers::{HpcProcess, HpcScheduler};
 
 /// A [`HpcScheduler`] that discovers jobs via the Slurm `scontrol` CLI.
 pub struct SlurmScheduler {}
 
 impl SlurmScheduler {
-
     /// Execute `scontrol listpids` and return the output lines.
     ///
     /// The header row is stripped from the output before returning.
@@ -80,11 +78,9 @@ impl SlurmScheduler {
 }
 
 impl HpcScheduler for SlurmScheduler {
-    /// Discover active Slurm jobs and their PIDs.
-    ///
-    /// Calls `scontrol listpids`, parses the output, and groups PIDs by
-    /// their job and step ID. Returns an empty list on failure.
-    fn get_job_pids(&self) -> Vec<HpcJob> {
+    /// Discover active HPC jobs and return their PIDs.
+    fn get_processes(&self) -> Vec<HpcProcess> {
+        // Fetch job data as reported by `scontrol`
         let lines = match SlurmScheduler::fetch_scontrol_lines() {
             Ok(lines) => lines,
             Err(e) => {
@@ -93,26 +89,22 @@ impl HpcScheduler for SlurmScheduler {
             }
         };
 
-        // Group PIDs by (jobid, stepid) so each HpcJob contains all PIDs for that step
-        let mut jobs: HashMap<(String, String), HpcJob> = HashMap::new();
-
+        // Parse scontrol output
+        let mut processes: Vec<HpcProcess> = Vec::new();
         for line in &lines {
             let (jobid, stepid, pid) = match SlurmScheduler::parse_scontrol_line(line) {
                 Some(parsed) => parsed,
                 None => continue,
             };
 
-            let key = (jobid.clone(), stepid.clone());
-            jobs.entry(key)
-                .or_insert_with(|| HpcJob {
-                    jobid,
-                    stepid,
-                    pids: Vec::new(),
-                })
-                .pids
-                .push(pid);
+            processes.push(HpcProcess {
+                scheduler: "Slurm",
+                jobid,
+                stepid,
+                pid,
+            })
         }
 
-        jobs.into_values().collect()
+        processes
     }
 }

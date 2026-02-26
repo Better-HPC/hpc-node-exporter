@@ -1,13 +1,14 @@
 pub mod slurm;
 
-/// An job reported by an HPC scheduler.
-pub struct HpcJob {
+/// A system process being run by an HPC scheduler.
+pub struct HpcProcess {
+    pub scheduler: &'static str,
     pub jobid: String,
     pub stepid: String,
-    pub pids: Vec<u32>,
+    pub pid: u32,
 }
 
 pub trait HpcScheduler {
-    /// Discover active HPC jobs from the scheduler and return their PIDs.
-    fn get_job_pids(&self) -> Vec<HpcJob>;
+    /// Discover active system processes from the HPC scheduler.
+    fn get_processes(&self) -> Vec<HpcProcess>;
 }
