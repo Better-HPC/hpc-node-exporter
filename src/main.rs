@@ -13,9 +13,6 @@ use crate::schedulers::HpcScheduler;
 fn main() {
     let args = Args::parse();
     let scheduler = SlurmScheduler::default();
-    let hostname: Arc<str> = gethostname::gethostname()
-        .to_string_lossy()
-        .into();
 
     // Build the list of enabled profilers from CLI flags
     let mut profilers: Vec<Box<dyn Profiler>> = Vec::new();
@@ -43,7 +40,7 @@ fn main() {
 
     // Collect and display metrics from each enabled profiler
     for profiler in &profilers {
-        match profiler.collect_metrics(&hostname, &processes) {
+        match profiler.collect_metrics(&processes) {
             Ok(metrics) => {
                 for m in &metrics {
                     println!("{}", m.to_prometheus());

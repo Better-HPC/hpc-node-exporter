@@ -1,7 +1,7 @@
 pub mod sys_node;
 
 use std::error::Error;
-use std::sync::Arc;
+use std::sync::OnceLock;
 
 use crate::schedulers::HpcProcess;
 
@@ -13,22 +13,28 @@ use crate::schedulers::HpcProcess;
 #[derive(Debug)]
 pub struct Metric {
     pub name: &'static str,
-    pub hostname: Arc<str>,
     pub jobid: Option<String>,
     pub stepid: Option<String>,
     pub value: f64,
 }
 
 impl Metric {
+    /// Return the local hostname, resolved once and cached for the process lifetime.
+    fn hostname() -> &'static str {
+        static HOSTNAME: OnceLock<String> = OnceLock::new();
+        HOSTNAME.get_or_init(|| gethostname::gethostname().to_string_lossy().into_owned())
+    }
+
     /// Return the metric in Prometheus line format.
     pub fn to_prometheus(&self) -> String {
+        let host = Self::hostname();
+
         match (&self.jobid, &self.stepid) {
             // Format job-level metrics with a job/step ID
             (Some(jobid), Some(stepid)) => {
                 format!(
                     r#"{name}{{hostname="{host}",jobid="{job}",stepid="{step}"}} {val:.1}"#,
                     name = self.name,
-                    host = self.hostname,
                     job = jobid,
                     step = stepid,
                     val = self.value,
@@ -40,7 +46,6 @@ impl Metric {
                 format!(
                     r#"{name}{{hostname="{host}"}} {val:.1}"#,
                     name = self.name,
-                    host = self.hostname,
                     val = self.value,
                 )
             }
@@ -62,11 +67,6 @@ pub trait Profiler {
     ///
     /// # Arguments
     ///
-    /// * `hostname` - The hostname to tag metrics with.
     /// * `processes` - The active HPC processes running on the host machine.
-    fn collect_metrics(
-        &self,
-        hostname: &Arc<str>,
-        processes: &[HpcProcess],
-    ) -> Result<Vec<Metric>, Box<dyn Error>>;
+    fn collect_metrics(&self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>>;
 }

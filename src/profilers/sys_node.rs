@@ -1,7 +1,7 @@
 //! Node-level system profiler.
 //!
 //! Collects machine-wide telemetry from `/proc` virtual files, independent
-//! of any particular HPC job. Mtrica are read from the following sources:
+//! of any particular HPC job. Metrics are read from the following sources:
 //!
 //! - `/proc/stat` — per-CPU utilization (user, system, idle percentages)
 //! - `/proc/meminfo` — memory usage (total, used, available bytes)
@@ -10,7 +10,6 @@
 
 use std::error::Error;
 use std::fs;
-use std::sync::Arc;
 
 use crate::profilers::{Metric, Profiler};
 use crate::schedulers::HpcProcess;
@@ -25,7 +24,7 @@ impl SysNodeProfiler {
     /// Each `cpu<N>` line is parsed into user, system, and idle percentages
     /// based on the jiffy counters exposed by the kernel. The aggregate `cpu`
     /// line is skipped so that only individual cores are reported.
-    fn collect_cpu(hostname: &Arc<str>) -> Result<Vec<Metric>, Box<dyn Error>> {
+    fn collect_cpu() -> Result<Vec<Metric>, Box<dyn Error>> {
         let stat = fs::read_to_string("/proc/stat")?;
         let mut metrics = Vec::new();
 
@@ -60,7 +59,6 @@ impl SysNodeProfiler {
 
             metrics.push(Metric {
                 name: "node_cpu_user_percent",
-                hostname: Arc::clone(hostname),
                 jobid: None,
                 stepid: None,
                 value: user_pct,
@@ -68,7 +66,6 @@ impl SysNodeProfiler {
 
             metrics.push(Metric {
                 name: "node_cpu_system_percent",
-                hostname: Arc::clone(hostname),
                 jobid: None,
                 stepid: None,
                 value: system_pct,
@@ -76,7 +73,6 @@ impl SysNodeProfiler {
 
             metrics.push(Metric {
                 name: "node_cpu_idle_percent",
-                hostname: Arc::clone(hostname),
                 jobid: None,
                 stepid: None,
                 value: idle_pct,
@@ -90,7 +86,7 @@ impl SysNodeProfiler {
     ///
     /// Reports total, used, and available memory in bytes. Used memory is
     /// computed as `total - available`.
-    fn collect_memory(hostname: &Arc<str>) -> Result<Vec<Metric>, Box<dyn Error>> {
+    fn collect_memory() -> Result<Vec<Metric>, Box<dyn Error>> {
         let meminfo = fs::read_to_string("/proc/meminfo")?;
         let mut total_kb: Option<f64> = None;
         let mut available_kb: Option<f64> = None;
@@ -115,7 +111,6 @@ impl SysNodeProfiler {
         Ok(vec![
             Metric {
                 name: "node_memory_total_bytes",
-                hostname: Arc::clone(hostname),
                 jobid: None,
                 stepid: None,
                 value: total_kb * 1024.0,
@@ -123,7 +118,6 @@ impl SysNodeProfiler {
 
             Metric {
                 name: "node_memory_used_bytes",
-                hostname: Arc::clone(hostname),
                 jobid: None,
                 stepid: None,
                 value: used_kb * 1024.0,
@@ -131,7 +125,6 @@ impl SysNodeProfiler {
 
             Metric {
                 name: "node_memory_available_bytes",
-                hostname: Arc::clone(hostname),
                 jobid: None,
                 stepid: None,
                 value: available_kb * 1024.0,
@@ -144,7 +137,7 @@ impl SysNodeProfiler {
     /// Only whole devices (e.g. `sda`, `nvme0n1`) are reported — partitions
     /// are skipped by filtering for entries with a minor number of `0`.
     /// Sector counts are converted to bytes using a 512-byte sector size.
-    fn collect_disk(hostname: &Arc<str>) -> Result<Vec<Metric>, Box<dyn Error>> {
+    fn collect_disk() -> Result<Vec<Metric>, Box<dyn Error>> {
         let diskstats = fs::read_to_string("/proc/diskstats")?;
         let mut metrics = Vec::new();
 
@@ -166,7 +159,6 @@ impl SysNodeProfiler {
 
             metrics.push(Metric {
                 name: "node_disk_read_bytes",
-                hostname: Arc::clone(hostname),
                 jobid: None,
                 stepid: None,
                 value: sectors_read * 512.0,
@@ -174,7 +166,6 @@ impl SysNodeProfiler {
 
             metrics.push(Metric {
                 name: "node_disk_written_bytes",
-                hostname: Arc::clone(hostname),
                 jobid: None,
                 stepid: None,
                 value: sectors_written * 512.0,
@@ -187,7 +178,7 @@ impl SysNodeProfiler {
     /// Parse `/proc/net/dev` and return per-interface network I/O metrics.
     ///
     /// The loopback interface (`lo`) is excluded from the results.
-    fn collect_network(hostname: &Arc<str>) -> Result<Vec<Metric>, Box<dyn Error>> {
+    fn collect_network() -> Result<Vec<Metric>, Box<dyn Error>> {
         let netdev = fs::read_to_string("/proc/net/dev")?;
         let mut metrics = Vec::new();
 
@@ -212,7 +203,6 @@ impl SysNodeProfiler {
 
             metrics.push(Metric {
                 name: "node_net_rx_bytes",
-                hostname: Arc::clone(hostname),
                 jobid: None,
                 stepid: None,
                 value: rx_bytes,
@@ -220,7 +210,6 @@ impl SysNodeProfiler {
 
             metrics.push(Metric {
                 name: "node_net_tx_bytes",
-                hostname: Arc::clone(hostname),
                 jobid: None,
                 stepid: None,
                 value: tx_bytes,
@@ -240,6 +229,7 @@ impl Profiler for SysNodeProfiler {
                 return Err(format!("SysNodeProfiler: required file {path} not found"));
             }
         }
+
         Ok(())
     }
 
@@ -247,16 +237,12 @@ impl Profiler for SysNodeProfiler {
     ///
     /// The `processes` argument is ignored since node-level metrics are
     /// not attributed to individual jobs.
-    fn collect_metrics(
-        &self,
-        hostname: &Arc<str>,
-        _processes: &[HpcProcess],
-    ) -> Result<Vec<Metric>, Box<dyn Error>> {
+    fn collect_metrics(&self, _processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
         let mut metrics = Vec::new();
-        metrics.extend(Self::collect_cpu(hostname)?);
-        metrics.extend(Self::collect_memory(hostname)?);
-        metrics.extend(Self::collect_disk(hostname)?);
-        metrics.extend(Self::collect_network(hostname)?);
+        metrics.extend(Self::collect_cpu()?);
+        metrics.extend(Self::collect_memory()?);
+        metrics.extend(Self::collect_disk()?);
+        metrics.extend(Self::collect_network()?);
         Ok(metrics)
     }
 }
