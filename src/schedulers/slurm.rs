@@ -63,7 +63,7 @@ impl SlurmScheduler {
         let parts: Vec<&str> = line.split_whitespace().collect();
 
         // Skip malformed lines
-        if parts.len() != 3 {
+        if parts.len() < 3 {
             return None;
         }
 

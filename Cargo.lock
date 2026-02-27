@@ -142,6 +142,7 @@ version = "0.0.0"
 dependencies = [
  "clap",
  "gethostname",
+ "libc",
 ]
 
 [[package]]

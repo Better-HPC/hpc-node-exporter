@@ -5,18 +5,29 @@
 //!
 //! - `/proc/stat` — per-CPU utilization (user, system, idle percentages)
 //! - `/proc/meminfo` — memory usage (total, used, available bytes)
-//! - `/proc/diskstats` — disk I/O (read/written bytes per device)
+//! - `/proc/diskstats` — disk I/O (read/written bytes per device, delta between scrapes)
 //! - `/proc/net/dev` — network I/O (rx/tx bytes per interface)
 
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
 
 use crate::profilers::{Metric, Profiler};
 use crate::schedulers::HpcProcess;
 
+/// Per-device cumulative disk counters from the previous scrape.
+#[derive(Debug, Clone)]
+struct DiskSample {
+    sectors_read: f64,
+    sectors_written: f64,
+}
+
 /// A [`Profiler`] that collects node-level system metrics from `/proc`.
 #[derive(Debug, Default)]
-pub struct SysNodeProfiler;
+pub struct SysNodeProfiler {
+    /// Previous disk counters keyed by device name, used for delta computation.
+    prev_disk: Option<HashMap<String, DiskSample>>,
+}
 
 impl SysNodeProfiler {
     /// Parse `/proc/stat` and return per-CPU utilization metrics.
@@ -29,8 +40,8 @@ impl SysNodeProfiler {
         let mut metrics = Vec::new();
 
         for line in stat.lines() {
-            // Skip the aggregate "cpu" line; only process per-core "cpuN" lines
-            if !line.starts_with("cpu") || line.starts_with("cpu ") {
+            // Use only the aggregate "cpu" line (not per-core "cpuN" lines)
+            if !line.starts_with("cpu ") {
                 continue;
             }
 
@@ -115,14 +126,12 @@ impl SysNodeProfiler {
                 stepid: None,
                 value: total_kb * 1024.0,
             },
-
             Metric {
                 name: "node_memory_used_bytes",
                 jobid: None,
                 stepid: None,
                 value: used_kb * 1024.0,
             },
-
             Metric {
                 name: "node_memory_available_bytes",
                 jobid: None,
@@ -132,14 +141,14 @@ impl SysNodeProfiler {
         ])
     }
 
-    /// Parse `/proc/diskstats` and return per-device I/O metrics.
+    /// Parse `/proc/diskstats` and return the current cumulative counters
+    /// keyed by device name.
     ///
     /// Only whole devices (e.g. `sda`, `nvme0n1`) are reported — partitions
     /// are skipped by filtering for entries with a minor number of `0`.
-    /// Sector counts are converted to bytes using a 512-byte sector size.
-    fn collect_disk() -> Result<Vec<Metric>, Box<dyn Error>> {
+    fn read_disk_counters() -> Result<HashMap<String, DiskSample>, Box<dyn Error>> {
         let diskstats = fs::read_to_string("/proc/diskstats")?;
-        let mut metrics = Vec::new();
+        let mut counters = HashMap::new();
 
         for line in diskstats.lines() {
             let parts: Vec<&str> = line.split_whitespace().collect();
@@ -152,35 +161,72 @@ impl SysNodeProfiler {
                 continue;
             }
 
-            // Field indices per kernel docs:
-            // [5] = sectors read, [9] = sectors written
+            let device = parts[2].to_string();
             let sectors_read: f64 = parts[5].parse().unwrap_or(0.0);
             let sectors_written: f64 = parts[9].parse().unwrap_or(0.0);
+
+            counters.insert(device, DiskSample { sectors_read, sectors_written });
+        }
+
+        Ok(counters)
+    }
+
+    /// Compute delta-based disk metrics from the current and previous samples.
+    ///
+    /// On the first scrape, the current counters are stored and no metrics
+    /// are emitted. On subsequent scrapes, the delta is computed for each
+    /// device and summed into a single read/write total.
+    fn collect_disk(&mut self) -> Result<Vec<Metric>, Box<dyn Error>> {
+        let current = Self::read_disk_counters()?;
+        let mut metrics = Vec::new();
+
+        if let Some(prev) = &self.prev_disk {
+            let mut total_read: f64 = 0.0;
+            let mut total_written: f64 = 0.0;
+
+            for (device, curr_sample) in &current {
+                if let Some(prev_sample) = prev.get(device) {
+                    let read_delta = (curr_sample.sectors_read - prev_sample.sectors_read) * 512.0;
+                    let write_delta =
+                        (curr_sample.sectors_written - prev_sample.sectors_written) * 512.0;
+
+                    // Guard against counter resets (e.g. device removal/re-add)
+                    if read_delta >= 0.0 {
+                        total_read += read_delta;
+                    }
+                    if write_delta >= 0.0 {
+                        total_written += write_delta;
+                    }
+                }
+            }
 
             metrics.push(Metric {
                 name: "node_disk_read_bytes",
                 jobid: None,
                 stepid: None,
-                value: sectors_read * 512.0,
+                value: total_read,
             });
 
             metrics.push(Metric {
                 name: "node_disk_written_bytes",
                 jobid: None,
                 stepid: None,
-                value: sectors_written * 512.0,
+                value: total_written,
             });
         }
 
+        self.prev_disk = Some(current);
         Ok(metrics)
     }
 
-    /// Parse `/proc/net/dev` and return per-interface network I/O metrics.
+    /// Parse `/proc/net/dev` and return aggregated network I/O metrics.
     ///
-    /// The loopback interface (`lo`) is excluded from the results.
+    /// Sums rx/tx bytes across all interfaces. The loopback interface (`lo`)
+    /// is excluded.
     fn collect_network() -> Result<Vec<Metric>, Box<dyn Error>> {
         let netdev = fs::read_to_string("/proc/net/dev")?;
-        let mut metrics = Vec::new();
+        let mut total_rx: f64 = 0.0;
+        let mut total_tx: f64 = 0.0;
 
         for line in netdev.lines() {
             // Each interface line contains a colon separating the name from stats
@@ -198,25 +244,24 @@ impl SysNodeProfiler {
                 continue;
             }
 
-            let rx_bytes: f64 = parts[0].parse().unwrap_or(0.0);
-            let tx_bytes: f64 = parts[8].parse().unwrap_or(0.0);
+            total_rx += parts[0].parse::<f64>().unwrap_or(0.0);
+            total_tx += parts[8].parse::<f64>().unwrap_or(0.0);
+        }
 
-            metrics.push(Metric {
+        Ok(vec![
+            Metric {
                 name: "node_net_rx_bytes",
                 jobid: None,
                 stepid: None,
-                value: rx_bytes,
-            });
-
-            metrics.push(Metric {
+                value: total_rx,
+            },
+            Metric {
                 name: "node_net_tx_bytes",
                 jobid: None,
                 stepid: None,
-                value: tx_bytes,
-            });
-        }
-
-        Ok(metrics)
+                value: total_tx,
+            },
+        ])
     }
 }
 
@@ -237,11 +282,14 @@ impl Profiler for SysNodeProfiler {
     ///
     /// The `processes` argument is ignored since node-level metrics are
     /// not attributed to individual jobs.
-    fn collect_metrics(&self, _processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
+    fn collect_metrics(
+        &mut self,
+        _processes: &[HpcProcess],
+    ) -> Result<Vec<Metric>, Box<dyn Error>> {
         let mut metrics = Vec::new();
         metrics.extend(Self::collect_cpu()?);
         metrics.extend(Self::collect_memory()?);
-        metrics.extend(Self::collect_disk()?);
+        metrics.extend(self.collect_disk()?);
         metrics.extend(Self::collect_network()?);
         Ok(metrics)
     }

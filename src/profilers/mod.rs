@@ -1,3 +1,4 @@
+pub mod sys_job;
 pub mod sys_node;
 
 use std::error::Error;
@@ -65,8 +66,11 @@ pub trait Profiler {
 
     /// Collect metrics and return them as a vector of [`Metric`] values.
     ///
+    /// Takes `&mut self` to allow profilers to maintain state between
+    /// collections (e.g., for computing deltas between scrapes).
+    ///
     /// # Arguments
     ///
     /// * `processes` - The active HPC processes running on the host machine.
-    fn collect_metrics(&self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>>;
+    fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>>;
 }

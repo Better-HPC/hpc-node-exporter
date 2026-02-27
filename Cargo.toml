@@ -7,3 +7,4 @@ description = "An HPC telemetry agent designed for the Keystone platform."
 [dependencies]
 clap = { version = "4.5.60", features = ["derive"] }
 gethostname = "1.1.0"
+libc = "0.2.182"
