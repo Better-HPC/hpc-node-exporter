@@ -2,8 +2,8 @@
 name = "keystone-exporter"
 version = "0.0.0"
 edition = "2021"
-description = "A job-level telemetry agent for HPC clusters."
+description = "An HPC telemetry agent designed for the Keystone platform."
 
 [dependencies]
 clap = { version = "4.5.60", features = ["derive"] }
-gethostname = "0.5"
+gethostname = "1.1.0"

@@ -2,11 +2,9 @@ mod cli;
 mod profilers;
 mod schedulers;
 
-use std::sync::Arc;
-
 use crate::cli::Args;
-use crate::profilers::Profiler;
 use crate::profilers::sys_node::SysNodeProfiler;
+use crate::profilers::Profiler;
 use crate::schedulers::slurm::SlurmScheduler;
 use crate::schedulers::HpcScheduler;
 

@@ -83,16 +83,10 @@ impl HpcScheduler for SlurmScheduler {
     /// Discover active HPC jobs and return their PIDs.
     fn get_processes(&self) -> Result<Vec<HpcProcess>, Box<dyn Error>> {
         let lines = SlurmScheduler::fetch_scontrol_lines()?;
-
         Ok(lines
             .iter()
             .filter_map(|line| SlurmScheduler::parse_scontrol_line(line))
-            .map(|(jobid, stepid, pid)| HpcProcess {
-                scheduler: "Slurm",
-                jobid,
-                stepid,
-                pid,
-            })
+            .map(|(jobid, stepid, pid)| HpcProcess { jobid, stepid, pid })
             .collect())
     }
 }

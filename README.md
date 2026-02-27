@@ -1,3 +1,3 @@
 # Keystone Exporter
 
-An HPC Prometheus exporter designed for the Keystone Platform.
+An HPC telemetry agent designed for the Keystone platform.
