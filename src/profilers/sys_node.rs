@@ -13,7 +13,7 @@ use sysinfo::{Networks, System};
 use crate::profilers::{Metric, Profiler};
 use crate::schedulers::HpcProcess;
 
-/// A [`Profiler`] that collects node-level system metrics via `sysinfo`.
+/// A [`Profiler`] for collecting node-level system metrics.
 #[derive(Debug)]
 pub struct SysNodeProfiler {
     sys: System,
@@ -22,18 +22,18 @@ pub struct SysNodeProfiler {
 
 impl Default for SysNodeProfiler {
     fn default() -> Self {
-        Self {
-            sys: System::new(),
-            networks: Networks::new_with_refreshed_list(),
-        }
+        let networks = Networks::new_with_refreshed_list();
+        let mut sys = System::new();
+
+        // CPU measurements are calculated as a delta.
+        // Perform the first measurement here so later calls are accurate.
+        sys.refresh_cpu_usage();
+        Self { sys, networks }
     }
 }
 
 impl SysNodeProfiler {
     /// Collect aggregate CPU usage as a single percentage.
-    ///
-    /// `sysinfo` computes this as a delta from the previous refresh, so the
-    /// first scrape will return 0%.
     fn collect_cpu(&mut self) -> Vec<Metric> {
         self.sys.refresh_cpu_usage();
 
@@ -67,9 +67,7 @@ impl SysNodeProfiler {
         ]
     }
 
-    /// Collect network I/O metrics (rx/tx bytes since last refresh).
-    ///
-    /// Sums across all interfaces, excluding loopback (`lo`).
+    /// Collect network metrics (rx, tx) in bytes across all interfaces except loopback (`lo`).
     fn collect_network(&mut self) -> Vec<Metric> {
         self.networks.refresh(false);
 
@@ -104,7 +102,6 @@ impl Profiler for SysNodeProfiler {
         if !sysinfo::IS_SUPPORTED_SYSTEM {
             return Err("SysNodeProfiler: OS not supported by sysinfo".to_string());
         }
-
         Ok(())
     }
 

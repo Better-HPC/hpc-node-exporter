@@ -18,20 +18,6 @@ use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use crate::profilers::{Metric, Profiler};
 use crate::schedulers::HpcProcess;
 
-/// A [`Profiler`] that collects job-level system metrics via `sysinfo`.
-#[derive(Debug)]
-pub struct SysJobProfiler {
-    sys: System,
-}
-
-impl Default for SysJobProfiler {
-    fn default() -> Self {
-        Self {
-            sys: System::new(),
-        }
-    }
-}
-
 /// Aggregated per-job snapshot built from individual process data.
 #[derive(Debug, Default)]
 struct JobSnapshot {
@@ -41,6 +27,18 @@ struct JobSnapshot {
     io_written_bytes: u64,
 }
 
+/// A [`Profiler`] that collects job-level system metrics via `sysinfo`.
+#[derive(Debug)]
+pub struct SysJobProfiler {
+    sys: System,
+}
+
+impl Default for SysJobProfiler {
+    fn default() -> Self {
+        Self { sys: System::new() }
+    }
+}
+
 impl SysJobProfiler {
     /// Refresh the specific PIDs from the process list and aggregate
     /// their metrics by (jobid, stepid).
@@ -48,21 +46,19 @@ impl SysJobProfiler {
         &mut self,
         processes: &[HpcProcess],
     ) -> HashMap<(String, String), JobSnapshot> {
-        let pids: Vec<Pid> = processes.iter().map(|p| Pid::from(p.pid as usize)).collect();
+        let pids: Vec<Pid> = processes
+            .iter()
+            .map(|p| Pid::from(p.pid as usize))
+            .collect();
 
         let refresh_kind = ProcessRefreshKind::nothing()
             .with_cpu()
             .with_memory()
             .with_disk_usage();
 
-        self.sys.refresh_processes_specifics(
-            ProcessesToUpdate::Some(&pids),
-            false,
-            refresh_kind,
-        );
+        self.sys.refresh_processes_specifics(ProcessesToUpdate::Some(&pids), false, refresh_kind);
 
         let mut jobs: HashMap<(String, String), JobSnapshot> = HashMap::new();
-
         for proc in processes {
             let pid = Pid::from(proc.pid as usize);
             let Some(info) = self.sys.process(pid) else {
@@ -96,18 +92,12 @@ impl Profiler for SysJobProfiler {
 
     /// Collect job-level system metrics by refreshing per-PID process data
     /// and aggregating by (jobid, stepid).
-    fn collect_metrics(
-        &mut self,
-        processes: &[HpcProcess],
-    ) -> Result<Vec<Metric>, Box<dyn Error>> {
+    fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
         let snapshots = self.collect_snapshots(processes);
         let mut metrics = Vec::new();
 
         for ((jobid, stepid), snap) in &snapshots {
-            let labels = vec![
-                ("jobid", jobid.clone()),
-                ("stepid", stepid.clone()),
-            ];
+            let labels = vec![("jobid", jobid.clone()), ("stepid", stepid.clone())];
 
             metrics.push(Metric {
                 name: "job_cpu_usage_percent",

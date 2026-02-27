@@ -8,8 +8,9 @@ use crate::schedulers::HpcProcess;
 
 /// A single node telemetry measurement.
 ///
-/// Each `Metric` carries a metric name, a set of key-value labels
-/// (always including the hostname), and the observed numeric value.
+/// Each `Metric` carries a metric name, a set of key-value labels, and the observed numeric value.
+/// The hostname for the parent system is automatically injected into the label values when rendered
+/// to prometheus format. All other labels must be specified manually.
 #[derive(Debug)]
 pub struct Metric {
     pub name: &'static str,
@@ -18,25 +19,28 @@ pub struct Metric {
 }
 
 impl Metric {
-    /// Return the local hostname, resolved once and cached for the process lifetime.
+    /// Return the local hostname, resolved once and cached for the program lifetime.
     fn hostname() -> &'static str {
         static HOSTNAME: OnceLock<String> = OnceLock::new();
         HOSTNAME.get_or_init(|| gethostname::gethostname().to_string_lossy().into_owned())
     }
 
     /// Return the metric in Prometheus line format.
-    ///
-    /// The `hostname` label is always prepended automatically.
     pub fn to_prometheus(&self) -> String {
         let host = Self::hostname();
 
+        // Render individual label/value pairs as strings
         let mut parts = vec![format!(r#"hostname="{host}""#)];
         for (k, v) in &self.labels {
             parts.push(format!(r#"{k}="{v}""#));
         }
 
         let labels_str = parts.join(",");
-        format!("{name}{{{labels_str}}} {val:.1}", name = self.name, val = self.value)
+        format!(
+            "{name}{{{labels_str}}} {val:.1}",
+            name = self.name,
+            val = self.value
+        )
     }
 }
 
