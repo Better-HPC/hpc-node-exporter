@@ -26,7 +26,9 @@ pub struct SysJobProfiler {
 
 impl Default for SysJobProfiler {
     fn default() -> Self {
-        Self { sys: System::new() }
+        Self {
+            sys: System::new(),
+        }
     }
 }
 
@@ -46,18 +48,18 @@ impl SysJobProfiler {
         &mut self,
         processes: &[HpcProcess],
     ) -> HashMap<(String, String), JobSnapshot> {
-        let pids: Vec<Pid> = processes
-            .iter()
-            .map(|p| Pid::from(p.pid as usize))
-            .collect();
+        let pids: Vec<Pid> = processes.iter().map(|p| Pid::from(p.pid as usize)).collect();
 
         let refresh_kind = ProcessRefreshKind::nothing()
             .with_cpu()
             .with_memory()
             .with_disk_usage();
 
-        self.sys
-            .refresh_processes_specifics(ProcessesToUpdate::Some(&pids), false, refresh_kind);
+        self.sys.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&pids),
+            false,
+            refresh_kind,
+        );
 
         let mut jobs: HashMap<(String, String), JobSnapshot> = HashMap::new();
 
@@ -94,39 +96,40 @@ impl Profiler for SysJobProfiler {
 
     /// Collect job-level system metrics by refreshing per-PID process data
     /// and aggregating by (jobid, stepid).
-    fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
+    fn collect_metrics(
+        &mut self,
+        processes: &[HpcProcess],
+    ) -> Result<Vec<Metric>, Box<dyn Error>> {
         let snapshots = self.collect_snapshots(processes);
         let mut metrics = Vec::new();
 
         for ((jobid, stepid), snap) in &snapshots {
-            let jid = Some(jobid.clone());
-            let sid = Some(stepid.clone());
+            let labels = vec![
+                ("jobid", jobid.clone()),
+                ("stepid", stepid.clone()),
+            ];
 
             metrics.push(Metric {
                 name: "job_cpu_usage_percent",
-                jobid: jid.clone(),
-                stepid: sid.clone(),
+                labels: labels.clone(),
                 value: snap.cpu_usage as f64,
             });
 
             metrics.push(Metric {
                 name: "job_memory_used_bytes",
-                jobid: jid.clone(),
-                stepid: sid.clone(),
+                labels: labels.clone(),
                 value: snap.memory_bytes as f64,
             });
 
             metrics.push(Metric {
                 name: "job_io_read_bytes",
-                jobid: jid.clone(),
-                stepid: sid.clone(),
+                labels: labels.clone(),
                 value: snap.io_read_bytes as f64,
             });
 
             metrics.push(Metric {
                 name: "job_io_write_bytes",
-                jobid: jid,
-                stepid: sid,
+                labels,
                 value: snap.io_written_bytes as f64,
             });
         }

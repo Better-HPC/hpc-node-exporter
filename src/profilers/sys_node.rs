@@ -39,8 +39,7 @@ impl SysNodeProfiler {
 
         vec![Metric {
             name: "node_cpu_usage_percent",
-            jobid: None,
-            stepid: None,
+            labels: vec![],
             value: self.sys.global_cpu_usage() as f64,
         }]
     }
@@ -52,20 +51,17 @@ impl SysNodeProfiler {
         vec![
             Metric {
                 name: "node_memory_total_bytes",
-                jobid: None,
-                stepid: None,
+                labels: vec![],
                 value: self.sys.total_memory() as f64,
             },
             Metric {
                 name: "node_memory_used_bytes",
-                jobid: None,
-                stepid: None,
+                labels: vec![],
                 value: self.sys.used_memory() as f64,
             },
             Metric {
                 name: "node_memory_available_bytes",
-                jobid: None,
-                stepid: None,
+                labels: vec![],
                 value: self.sys.available_memory() as f64,
             },
         ]
@@ -91,14 +87,12 @@ impl SysNodeProfiler {
         vec![
             Metric {
                 name: "node_net_rx_bytes",
-                jobid: None,
-                stepid: None,
+                labels: vec![],
                 value: total_rx as f64,
             },
             Metric {
                 name: "node_net_tx_bytes",
-                jobid: None,
-                stepid: None,
+                labels: vec![],
                 value: total_tx as f64,
             },
         ]
@@ -110,6 +104,7 @@ impl Profiler for SysNodeProfiler {
         if !sysinfo::IS_SUPPORTED_SYSTEM {
             return Err("SysNodeProfiler: OS not supported by sysinfo".to_string());
         }
+
         Ok(())
     }
 
