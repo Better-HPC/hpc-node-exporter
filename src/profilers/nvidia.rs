@@ -56,16 +56,21 @@ impl NvidiaProfiler {
         Ok(Self { nvml })
     }
 
-    /// Collect per-device GPU utilization and memory metrics.
+    /// Collect all GPU metrics in a single pass over the device list.
     ///
-    /// Iterates over all devices reported by [`Nvml::device_count`] and
-    /// queries each for its UUID, compute utilization percentage, and
-    /// memory allocation breakdown (total, used, free).
+    /// For each device, collects both node-level telemetry (utilization,
+    /// memory, temperature, power) and per-job GPU memory usage by matching
+    /// running compute process PIDs against the scheduler's process list.
     ///
+    /// This avoids enumerating the device list multiple times per scrape.
     /// If a device query fails (e.g., the GPU falls off the bus mid-scrape),
     /// a warning is printed and that device is skipped rather than failing
     /// the entire collection.
-    fn collect_utilization_and_memory(&self) -> Vec<Metric> {
+    ///
+    /// # Arguments
+    ///
+    /// * `processes` — Active processes discovered by the HPC scheduler.
+    fn collect_all(&self, processes: &[HpcProcess]) -> Vec<Metric> {
         let mut metrics = Vec::new();
 
         let count = match self.nvml.device_count() {
@@ -75,6 +80,15 @@ impl NvidiaProfiler {
                 return metrics;
             }
         };
+
+        // Build a PID → (jobid, stepid) lookup for O(1) matching
+        let pid_to_job: HashMap<u32, (&str, &str)> = processes
+            .iter()
+            .map(|p| (p.pid, (p.jobid.as_str(), p.stepid.as_str())))
+            .collect();
+
+        // Accumulate per-job memory across devices
+        let mut snapshots: HashMap<(String, String, String), GpuJobSnapshot> = HashMap::new();
 
         for i in 0..count {
             let device = match self.nvml.device_by_index(i) {
@@ -94,6 +108,8 @@ impl NvidiaProfiler {
             };
 
             let labels = vec![("gpu_uuid", uuid.clone())];
+
+            // --- Node-level metrics ---
 
             if let Ok(util) = device.utilization_rates() {
                 metrics.push(Metric {
@@ -131,77 +147,13 @@ impl NvidiaProfiler {
 
             if let Ok(power) = device.power_usage() {
                 metrics.push(Metric {
-                    name: "gpu_power_usage_milliwatts",
+                    name: "gpu_power_usage_watts",
                     labels,
-                    value: power as f64,
+                    value: power as f64 / 1000.0,
                 });
             }
-        }
 
-        metrics
-    }
-
-    /// Build per-job GPU memory snapshots by matching compute process PIDs
-    /// against the scheduler's process list.
-    ///
-    /// For each GPU device, this method:
-    ///
-    /// 1. Queries NVML for the list of running compute processes via
-    ///    [`Device::running_compute_processes`], which returns each
-    ///    process's PID and GPU memory usage.
-    /// 2. Builds a lookup table from the scheduler's [`HpcProcess`] list
-    ///    to quickly map PIDs to `(jobid, stepid)` pairs.
-    /// 3. For each GPU process whose PID appears in the lookup table,
-    ///    accumulates its GPU memory usage into the corresponding
-    ///    [`GpuJobSnapshot`], keyed by `(jobid, stepid, gpu_uuid)`.
-    ///
-    /// Processes not found in the scheduler list (e.g., system daemons
-    /// using the GPU) are silently ignored.
-    ///
-    /// # Arguments
-    ///
-    /// * `processes` — Active processes discovered by the HPC scheduler.
-    ///
-    /// # Returns
-    ///
-    /// A map from `(jobid, stepid, gpu_uuid)` to the aggregated
-    /// [`GpuJobSnapshot`] for that job step on that device.
-    fn collect_job_snapshots(
-        &self,
-        processes: &[HpcProcess],
-    ) -> HashMap<(String, String, String), GpuJobSnapshot> {
-        // Build a PID → (jobid, stepid) lookup for O(1) matching
-        let pid_to_job: HashMap<u32, (&str, &str)> = processes
-            .iter()
-            .map(|p| (p.pid, (p.jobid.as_str(), p.stepid.as_str())))
-            .collect();
-
-        let mut snapshots: HashMap<(String, String, String), GpuJobSnapshot> = HashMap::new();
-
-        let count = match self.nvml.device_count() {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("warning: failed to get GPU device count: {e}");
-                return snapshots;
-            }
-        };
-
-        for i in 0..count {
-            let device = match self.nvml.device_by_index(i) {
-                Ok(d) => d,
-                Err(e) => {
-                    eprintln!("warning: failed to get GPU device {i}: {e}");
-                    continue;
-                }
-            };
-
-            let uuid = match device.uuid() {
-                Ok(u) => u,
-                Err(e) => {
-                    eprintln!("warning: failed to get UUID for GPU {i}: {e}");
-                    continue;
-                }
-            };
+            // --- Per-job memory from compute processes on this device ---
 
             let gpu_procs = match device.running_compute_processes() {
                 Ok(p) => p,
@@ -228,22 +180,7 @@ impl NvidiaProfiler {
             }
         }
 
-        snapshots
-    }
-
-    /// Convert per-job GPU snapshots into Prometheus-ready [`Metric`] values.
-    ///
-    /// Delegates to [`collect_job_snapshots`](Self::collect_job_snapshots)
-    /// to build the aggregated data, then produces one `job_gpu_memory_used_bytes`
-    /// metric per `(jobid, stepid, gpu_uuid)` combination.
-    ///
-    /// # Arguments
-    ///
-    /// * `processes` — Active processes discovered by the HPC scheduler.
-    fn collect_job_metrics(&self, processes: &[HpcProcess]) -> Vec<Metric> {
-        let snapshots = self.collect_job_snapshots(processes);
-        let mut metrics = Vec::new();
-
+        // Flatten job snapshots into metrics
         for ((jobid, stepid, gpu_uuid), snap) in &snapshots {
             metrics.push(Metric {
                 name: "job_gpu_memory_used_bytes",
@@ -263,6 +200,9 @@ impl NvidiaProfiler {
 impl Profiler for NvidiaProfiler {
     /// Collect metrics and return them as a vector of [`Metric`] values.
     ///
+    /// Performs a single pass over all GPU devices, collecting both
+    /// node-level and per-job metrics in one enumeration.
+    ///
     /// # Arguments
     ///
     /// * `processes` — Active HPC processes on this node, as reported by the scheduler.
@@ -276,9 +216,6 @@ impl Profiler for NvidiaProfiler {
         &mut self,
         processes: &[HpcProcess],
     ) -> Result<Vec<Metric>, Box<dyn Error>> {
-        let mut metrics = Vec::new();
-        metrics.extend(self.collect_utilization_and_memory());
-        metrics.extend(self.collect_job_metrics(processes));
-        Ok(metrics)
+        Ok(self.collect_all(processes))
     }
 }
