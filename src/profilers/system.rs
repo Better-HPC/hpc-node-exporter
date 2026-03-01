@@ -34,26 +34,35 @@ pub struct SystemProfiler {
     networks: Networks,
 }
 
-impl Default for SystemProfiler {
+impl SystemProfiler {
     /// Create a new profiler with pre-warmed CPU and network baselines.
     ///
     /// The `sysinfo` crate reports CPU usage as a delta between successive
     /// [`System::refresh_cpu_usage`] calls. This constructor performs the
-    /// first refresh so successive cals return a real value instead of a
+    /// first refresh so successive calls return a real value instead of a
     /// meaningless zero placeholder.
     ///
     /// Similarly, [`Networks::new_with_refreshed_list`] snapshots the
     /// current set of network interfaces so later refreshes can track
     /// per-interval byte counters.
-    fn default() -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the host operating system is not supported by
+    /// the `sysinfo` crate.
+    pub fn new() -> Result<Self, Box<dyn Error>> {
+        if !sysinfo::IS_SUPPORTED_SYSTEM {
+            return Err("SystemProfiler: OS not supported by sysinfo".into());
+        }
+
+        // Perform a baseline measurement for system metrics
         let networks = Networks::new_with_refreshed_list();
         let mut sys = System::new();
         sys.refresh_cpu_usage();
-        Self { sys, networks }
-    }
-}
 
-impl SystemProfiler {
+        Ok(Self { sys, networks })
+    }
+
     /// Collect the total CPU usage summed across all cores.
     ///
     /// Calls [`System::refresh_cpu_usage`] to capture a new sample, then
@@ -242,17 +251,6 @@ impl SystemProfiler {
 }
 
 impl Profiler for SystemProfiler {
-    /// Check whether the host OS is supported by the `sysinfo` crate.
-    ///
-    /// This is a compile-time constant exposed by `sysinfo`.
-    fn is_supported(&self) -> Result<(), String> {
-        if !sysinfo::IS_SUPPORTED_SYSTEM {
-            return Err("SystemProfiler: OS not supported by sysinfo".to_string());
-        }
-
-        Ok(())
-    }
-
     /// Collect metrics and return them as a vector of [`Metric`] values.
     ///
     /// # Arguments
@@ -262,8 +260,7 @@ impl Profiler for SystemProfiler {
     /// # Errors
     ///
     /// Returns an error if any underlying `sysinfo` call fails. In
-    /// practice, failures are rare once [`is_supported`](Self::is_supported)
-    /// has passed.
+    /// practice, failures are rare once construction has succeeded.
     fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
         let mut metrics = Vec::new();
         metrics.extend(self.collect_cpu());

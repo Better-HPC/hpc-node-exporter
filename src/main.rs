@@ -2,12 +2,28 @@ mod cli;
 mod profilers;
 mod schedulers;
 
+use std::error::Error;
+
 use crate::cli::Args;
 use crate::profilers::nvidia::NvidiaProfiler;
 use crate::profilers::system::SystemProfiler;
 use crate::profilers::Profiler;
 use crate::schedulers::slurm::SlurmScheduler;
 use crate::schedulers::HpcScheduler;
+
+/// Initialize a profiler or exit with an error message.
+fn init_profiler<P: Profiler + 'static>(
+    result: Result<P, Box<dyn Error>>,
+    name: &str,
+) -> Box<dyn Profiler> {
+    match result {
+        Ok(p) => Box::new(p),
+        Err(e) => {
+            eprintln!("failed to initialize {name} profiler: {e}");
+            std::process::exit(1);
+        }
+    }
+}
 
 fn main() {
     let args = Args::parse();
@@ -17,25 +33,11 @@ fn main() {
     let mut profilers: Vec<Box<dyn Profiler>> = Vec::new();
 
     if args.system {
-        profilers.push(Box::new(SystemProfiler::default()));
+        profilers.push(init_profiler(SystemProfiler::new(), "system"));
     }
 
     if args.nvidia {
-        match NvidiaProfiler::new() {
-            Ok(p) => profilers.push(Box::new(p)),
-            Err(e) => {
-                eprintln!("failed to initialize NVIDIA profiler: {e}");
-                std::process::exit(1);
-            }
-        }
-    }
-
-    // Validate that all enabled profilers are supported
-    for profiler in &profilers {
-        if let Err(reason) = profiler.is_supported() {
-            eprintln!("profiler not supported: {reason}");
-            std::process::exit(1);
-        }
+        profilers.push(init_profiler(NvidiaProfiler::new(), "NVIDIA"));
     }
 
     // Fetch active processes from the scheduler

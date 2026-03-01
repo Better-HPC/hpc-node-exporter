@@ -50,10 +50,6 @@ impl Metric {
 /// Implementors are responsible for gathering metrics from a specific
 /// hardware domain and scope (e.g., CPU/memory system metrics, GPU card metrics).
 pub trait Profiler {
-    /// Check whether this profiler is supported on the current system.
-    /// Implementors should check for the presence of required drivers, tools, and interfaces.
-    fn is_supported(&self) -> Result<(), String>;
-
     /// Collect metrics and return them as a vector of [`Metric`] values.
     ///
     /// Takes `&mut self` to allow profilers to maintain state between

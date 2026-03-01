@@ -15,9 +15,7 @@ use crate::schedulers::HpcProcess;
 
 /// Aggregated per-job GPU memory usage across one or more devices.
 ///
-/// Built by summing `used_gpu_memory` for every compute process whose PID
-/// matches a scheduler-reported [`HpcProcess`] under the same `(jobid, stepid)`
-/// key.
+/// Represents GPU usage summed over all active process running under the same `(jobid, stepid)`.
 #[derive(Debug, Default)]
 struct GpuJobSnapshot {
     memory_bytes: u64,
@@ -37,16 +35,24 @@ impl NvidiaProfiler {
     /// Initialize the NVML library and return a new profiler instance.
     ///
     /// Calls [`Nvml::init`] to dynamically load `libnvidia-ml.so` and
-    /// resolve its function symbols. This is intentionally separated from
-    /// the [`Profiler`] trait so callers can handle initialization failure
-    /// before registering the profiler.
+    /// resolve its function symbols, then verifies that at least one GPU
+    /// device is visible. A system with the NVIDIA driver installed but no
+    /// GPUs accessible (e.g., inside a container without device passthrough)
+    /// will fail this check.
     ///
     /// # Errors
     ///
     /// Returns an error if the NVIDIA driver is not installed, the NVML
-    /// shared library cannot be found, or the library fails to initialize.
-    pub fn new() -> Result<Self, nvml_wrapper::error::NvmlError> {
+    /// shared library cannot be found, the library fails to initialize,
+    /// or no GPU devices are detected.
+    pub fn new() -> Result<Self, Box<dyn Error>> {
         let nvml = Nvml::init()?;
+
+        let count = nvml.device_count()?;
+        if count == 0 {
+            return Err("NvidiaProfiler: no NVIDIA GPU devices found".into());
+        }
+
         Ok(Self { nvml })
     }
 
@@ -134,8 +140,6 @@ impl NvidiaProfiler {
 
         metrics
     }
-
-    // ── Job-level collectors ────────────────────────────────────────────
 
     /// Build per-job GPU memory snapshots by matching compute process PIDs
     /// against the scheduler's process list.
@@ -257,37 +261,11 @@ impl NvidiaProfiler {
 }
 
 impl Profiler for NvidiaProfiler {
-    /// Check whether the NVML library was successfully initialized.
-    ///
-    /// Since [`NvidiaProfiler::new`] already performs initialization,
-    /// this method validates that the library can enumerate at least one
-    /// GPU device. A system with the NVIDIA driver installed but no GPUs
-    /// visible (e.g., inside a container without device passthrough) will
-    /// fail this check.
-    fn is_supported(&self) -> Result<(), String> {
-        let count = self
-            .nvml
-            .device_count()
-            .map_err(|e| format!("NvidiaProfiler: failed to query device count: {e}"))?;
-
-        if count == 0 {
-            return Err("NvidiaProfiler: no NVIDIA GPU devices found".to_string());
-        }
-
-        Ok(())
-    }
-
-    /// Collect all GPU metrics — both node-level and job-level — in a
-    /// single pass.
-    ///
-    /// Node-level metrics are collected first (utilization, memory,
-    /// temperature, power for each device), followed by job-level metrics
-    /// (GPU memory attributed to scheduler jobs via PID matching).
+    /// Collect metrics and return them as a vector of [`Metric`] values.
     ///
     /// # Arguments
     ///
-    /// * `processes` — Active HPC processes on this node, as reported by
-    ///   the scheduler. Used for job-level GPU memory attribution.
+    /// * `processes` — Active HPC processes on this node, as reported by the scheduler.
     ///
     /// # Errors
     ///
