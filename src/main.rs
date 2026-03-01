@@ -3,8 +3,7 @@ mod profilers;
 mod schedulers;
 
 use crate::cli::Args;
-use crate::profilers::sys_job::SysJobProfiler;
-use crate::profilers::sys_node::SysNodeProfiler;
+use crate::profilers::system::SystemProfiler;
 use crate::profilers::Profiler;
 use crate::schedulers::slurm::SlurmScheduler;
 use crate::schedulers::HpcScheduler;
@@ -16,12 +15,8 @@ fn main() {
     // Build the list of enabled profilers from CLI flags
     let mut profilers: Vec<Box<dyn Profiler>> = Vec::new();
 
-    if args.sys_node {
-        profilers.push(Box::new(SysNodeProfiler::default()));
-    }
-
-    if args.sys_job {
-        profilers.push(Box::new(SysJobProfiler::default()));
+    if args.system {
+        profilers.push(Box::new(SystemProfiler::default()));
     }
 
     // Validate that all enabled profilers are supported

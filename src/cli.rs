@@ -7,7 +7,7 @@ use clap::Parser;
 #[command(
     name = "keystone-exporter",
     about = "A job-aware Prometheus exporter for the Keystone HPC platform.",
-    version,
+    version
 )]
 pub struct Args {
     /// Host interface to bind to.
@@ -18,21 +18,13 @@ pub struct Args {
     #[arg(long, default_value_t = 9105)]
     pub port: u16,
 
-    /// Include node-level system metrics.
+    /// Include system CPU metrics.
     #[arg(long)]
-    pub sys_node: bool,
+    pub system: bool,
 
-    /// Include job-level system metrics.
+    /// Include NVIDIA GPU metrics.
     #[arg(long)]
-    pub sys_job: bool,
-
-    /// Include node-level NVIDIA metrics.
-    #[arg(long)]
-    pub nvidia_node: bool,
-
-    /// Include job-level NVIDIA metrics.
-    #[arg(long)]
-    pub nvidia_job: bool,
+    pub nvidia: bool,
 }
 
 impl Args {

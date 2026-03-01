@@ -1,5 +1,4 @@
-pub mod sys_job;
-pub mod sys_node;
+pub mod system;
 
 use std::error::Error;
 use std::sync::OnceLock;
@@ -35,6 +34,7 @@ impl Metric {
             parts.push(format!(r#"{k}="{v}""#));
         }
 
+        // Combine labels and value into a single line
         let labels_str = parts.join(",");
         format!(
             "{name}{{{labels_str}}} {val:.1}",
@@ -47,8 +47,7 @@ impl Metric {
 /// Trait for collecting hardware telemetry metrics.
 ///
 /// Implementors are responsible for gathering metrics from a specific
-/// hardware domain and scope (e.g., CPU/memory system metrics, NVIDIA
-/// GPU metrics).
+/// hardware domain and scope (e.g., CPU/memory system metrics, GPU card metrics).
 pub trait Profiler {
     /// Check whether this profiler is supported on the current system.
     /// Implementors should check for the presence of required drivers, tools, and interfaces.

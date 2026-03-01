@@ -43,6 +43,7 @@ impl SlurmScheduler {
             ));
         }
 
+        // Drop header row and return lines from the table body
         let stdout = String::from_utf8_lossy(&output.stdout);
         Ok(stdout.trim().lines().skip(1).map(String::from).collect())
     }
