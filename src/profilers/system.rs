@@ -63,18 +63,20 @@ impl Default for SystemProfiler {
 }
 
 impl SystemProfiler {
-    /// Collect the aggregate CPU usage percentage across all cores.
+    /// Collect the total CPU usage summed across all cores.
     ///
     /// Calls [`System::refresh_cpu_usage`] to capture a new sample, then
-    /// reads the global average via [`System::global_cpu_usage`]. The
-    /// returned value is a single percentage in the range 0.0–100.0.
+    /// sums the per-core values from [`System::cpus`]. 100% utilization
+    /// represents full utilization of one core, so a 4-core machine at
+    /// full load reports 400%.
     fn collect_cpu(&mut self) -> Vec<Metric> {
         self.sys.refresh_cpu_usage();
+        let total_cpu: f64 = self.sys.cpus().iter().map(|c| c.cpu_usage() as f64).sum();
 
         vec![Metric {
             name: "node_cpu_usage_percent",
             labels: vec![],
-            value: self.sys.global_cpu_usage() as f64,
+            value: total_cpu,
         }]
     }
 
@@ -271,10 +273,7 @@ impl Profiler for SystemProfiler {
     /// Returns an error if any underlying `sysinfo` call fails. In
     /// practice, failures are rare once [`is_supported`](Self::is_supported)
     /// has passed.
-    fn collect_metrics(
-        &mut self,
-        processes: &[HpcProcess],
-    ) -> Result<Vec<Metric>, Box<dyn Error>> {
+    fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
         let mut metrics = Vec::new();
         metrics.extend(self.collect_cpu());
         metrics.extend(self.collect_memory());
