@@ -3,6 +3,7 @@ mod profilers;
 mod schedulers;
 
 use crate::cli::Args;
+use crate::profilers::nvidia::NvidiaProfiler;
 use crate::profilers::system::SystemProfiler;
 use crate::profilers::Profiler;
 use crate::schedulers::slurm::SlurmScheduler;
@@ -17,6 +18,16 @@ fn main() {
 
     if args.system {
         profilers.push(Box::new(SystemProfiler::default()));
+    }
+
+    if args.nvidia {
+        match NvidiaProfiler::new() {
+            Ok(p) => profilers.push(Box::new(p)),
+            Err(e) => {
+                eprintln!("failed to initialize NVIDIA profiler: {e}");
+                std::process::exit(1);
+            }
+        }
     }
 
     // Validate that all enabled profilers are supported

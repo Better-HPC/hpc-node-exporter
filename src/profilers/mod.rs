@@ -1,3 +1,4 @@
+pub mod nvidia;
 pub mod system;
 
 use std::error::Error;

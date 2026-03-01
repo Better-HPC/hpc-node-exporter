@@ -1,16 +1,7 @@
 //! Combined node-level and job-level system profiler.
 //!
-//! Collects both machine-wide and per-job system telemetry using the `sysinfo` crate.
-//!
-//! Node-level metrics:
-//! - CPU utilization (aggregate usage percentage)
-//! - Memory usage (total, used, available bytes)
-//! - Network I/O (rx/tx bytes per scrape interval, excluding loopback)
-//!
-//! Job-level metrics:
-//! - CPU utilization (total usage percent, per-core style)
-//! - Memory usage (RSS in bytes)
-//! - I/O bytes read/written
+//! This module provides [`SystemProfiler`], which uses the [`sysinfo`] crate to
+//! collect telemetry for CPU, memory, and network utilization.
 
 use std::collections::HashMap;
 use std::error::Error;
