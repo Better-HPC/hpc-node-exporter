@@ -25,14 +25,24 @@ impl Metric {
         HOSTNAME.get_or_init(|| gethostname::gethostname().to_string_lossy().into_owned())
     }
 
+    /// Escape a Prometheus label value.
+    ///
+    /// Prometheus requires label values to be enclosed in double quotes
+    /// have backslashes, double quotes, and newlines escaped.
+    fn escape_label_value(v: &str) -> String {
+        v.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+    }
+
     /// Return the metric in Prometheus line format.
     pub fn to_prometheus(&self) -> String {
         let host = Self::hostname();
 
         // Render individual label/value pairs as strings
-        let mut parts = vec![format!(r#"hostname="{host}""#)];
+        let mut parts = vec![format!(r#"hostname="{}""#, Self::escape_label_value(host))];
         for (k, v) in &self.labels {
-            parts.push(format!(r#"{k}="{v}""#));
+            parts.push(format!(r#"{k}="{}""#, Self::escape_label_value(v)));
         }
 
         // Combine labels and value into a single line
