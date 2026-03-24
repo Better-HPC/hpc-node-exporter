@@ -40,6 +40,10 @@ impl NvidiaProfiler {
     /// GPUs accessible (e.g., inside a container without device passthrough)
     /// will fail this check.
     ///
+    /// # Returns
+    ///
+    /// A new [`NvidiaProfiler`] instance.
+    ///
     /// # Errors
     ///
     /// Returns an error if the NVIDIA driver is not installed, the NVML
@@ -56,7 +60,7 @@ impl NvidiaProfiler {
         Ok(Self { nvml })
     }
 
-    /// Collect all GPU metrics in a single pass over the device list.
+    /// Collect metrics for all GPUs and HPC jobs in a single pass.
     ///
     /// For each device, collects both node-level telemetry (utilization,
     /// memory, temperature, power) and per-job GPU memory usage by matching
@@ -69,8 +73,15 @@ impl NvidiaProfiler {
     ///
     /// # Arguments
     ///
-    /// * `processes` — Active processes discovered by the HPC scheduler.
-    fn collect_all(&self, processes: &[HpcProcess]) -> Vec<Metric> {
+    /// * `processes` - Active system processes to collect metrics for.
+    ///
+    /// # Returns
+    ///
+    /// A vector of profiling metrics including:
+    /// `gpu_utilization_percent`, `gpu_memory_total_bytes`, `gpu_memory_used_bytes`,
+    /// `gpu_memory_free_bytes`, `gpu_temperature_celsius`, `gpu_power_usage_watts`,
+    /// and `job_gpu_memory_used_bytes`.
+    fn collect_all(&mut self, processes: &[HpcProcess]) -> Vec<Metric> {
         let mut metrics = Vec::new();
 
         let count = match self.nvml.device_count() {
@@ -198,14 +209,18 @@ impl NvidiaProfiler {
 }
 
 impl Profiler for NvidiaProfiler {
-    /// Collect metrics and return them as a vector of [`Metric`] values.
+    /// Collect all card and job-level metrics for NVIDIA GPUs.
     ///
     /// Performs a single pass over all GPU devices, collecting both
     /// node-level and per-job metrics in one enumeration.
     ///
     /// # Arguments
     ///
-    /// * `processes` — Active HPC processes on this node, as reported by the scheduler.
+    /// * `processes` - Active system processes to collect metrics for.
+    ///
+    /// # Returns
+    ///
+    /// A vector of profiling metrics.
     ///
     /// # Errors
     ///

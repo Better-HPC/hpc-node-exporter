@@ -1,3 +1,8 @@
+//! Profiler trait and shared metric types.
+//!
+//! This module defines the [`Profiler`] trait and the [`Metric`] type used
+//! by all hardware-specific profiler implementations.
+
 pub mod nvidia;
 pub mod system;
 
@@ -10,7 +15,7 @@ use crate::schedulers::HpcProcess;
 ///
 /// Each `Metric` carries a metric name, a set of key-value labels, and the observed numeric value.
 /// The hostname for the parent system is automatically injected into the label values when rendered
-/// to prometheus format. All other labels must be specified manually.
+/// to Prometheus format. All other labels must be specified manually.
 #[derive(Debug)]
 pub struct Metric {
     pub name: &'static str,
@@ -28,7 +33,7 @@ impl Metric {
     /// Escape a Prometheus label value.
     ///
     /// Prometheus requires label values to be enclosed in double quotes
-    /// have backslashes, double quotes, and newlines escaped.
+    /// and for backslashes, double quotes, and newlines to be escaped.
     fn escape_label_value(v: &str) -> String {
         v.replace('\\', "\\\\")
             .replace('"', "\\\"")
