@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 
+use log::warn;
 use nvml_wrapper::enum_wrappers::device::TemperatureSensor;
 use nvml_wrapper::Nvml;
 
@@ -88,7 +89,7 @@ impl NvidiaProfiler {
         let count = match self.nvml.device_count() {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("warning: failed to get GPU device count: {e}");
+                warn!("failed to get GPU device count: {e}");
                 return metrics;
             }
         };
@@ -106,7 +107,7 @@ impl NvidiaProfiler {
             let device = match self.nvml.device_by_index(i) {
                 Ok(d) => d,
                 Err(e) => {
-                    eprintln!("warning: failed to get GPU device {i}: {e}");
+                    warn!("failed to get GPU device {i}: {e}");
                     continue;
                 }
             };
@@ -114,7 +115,7 @@ impl NvidiaProfiler {
             let uuid = match device.uuid() {
                 Ok(u) => u,
                 Err(e) => {
-                    eprintln!("warning: failed to get UUID for GPU {i}: {e}");
+                    warn!("failed to get UUID for GPU {i}: {e}");
                     continue;
                 }
             };
@@ -170,7 +171,7 @@ impl NvidiaProfiler {
             let gpu_procs = match device.running_compute_processes() {
                 Ok(p) => p,
                 Err(e) => {
-                    eprintln!("warning: failed to get compute processes for GPU {i}: {e}");
+                    warn!("failed to get compute processes for GPU {i}: {e}");
                     continue;
                 }
             };

@@ -1,6 +1,6 @@
 //! Entry point for the `keystone-exporter` binary.
 //!
-//! Parses command-line arguments, initializes the requested profilers
+//! Parses command-line arguments, initializes the requested profilers,
 //! starts background metrics collection, and launches the HTTP server.
 
 mod api;
@@ -10,6 +10,7 @@ mod profilers;
 mod schedulers;
 
 use arc_swap::ArcSwap;
+use log::{error, info};
 use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
@@ -20,32 +21,81 @@ use crate::profilers::system::SystemProfiler;
 use crate::profilers::Profiler;
 use crate::schedulers::slurm::SlurmScheduler;
 
-/// Initialize a profiler or exit with an error message.
-///
-/// Unwraps the profiler construction result and boxes it as a trait
-/// object. If initialization fails, the error is printed to stderr
-/// and the process exits immediately — profiler availability is
-/// considered a hard requirement at startup.
+/// Configure logging to syslog and optionally to stdout.
 ///
 /// # Arguments
 ///
-/// * `result` - The result of constructing the profiler.
-/// * `name` - A human-readable name for the profiler, used in error messages.
+/// * `quiet` - When `true`, suppresses console log output.
 ///
-/// # Returns
+/// # Errors
 ///
-/// A boxed [`Profiler`] trait object ready for use by the collector.
-fn init_profiler<P: Profiler + Send + 'static>(
-    result: Result<P, Box<dyn Error>>,
-    name: &str,
-) -> Box<dyn Profiler + Send> {
-    match result {
-        Ok(p) => Box::new(p),
-        Err(e) => {
-            eprintln!("failed to initialize {name} profiler: {e}");
-            std::process::exit(1);
+/// Returns an error if the syslog socket cannot be opened or the
+/// global logger has already been set.
+fn init_logging(quiet: bool) -> Result<(), Box<dyn Error>> {
+    let syslog_formatter = syslog::Formatter3164 {
+        facility: syslog::Facility::LOG_USER,
+        hostname: None,
+        process: "keystone-exporter".to_owned(),
+        pid: 0,
+    };
+
+    let format =
+        |out: fern::FormatCallback, message: &std::fmt::Arguments, record: &log::Record| {
+            out.finish(format_args!("[{}] {}", record.level(), message))
+        };
+
+    let mut config = fern::Dispatch::new()
+        .level(log::LevelFilter::Info)
+        .format(format)
+        .chain(syslog::unix(syslog_formatter)?);
+
+    if !quiet {
+        config = config.chain(std::io::stdout());
+    }
+
+    config.apply()?;
+    Ok(())
+}
+
+/// Initialize hardware profilers.
+///
+/// Returns a vector of boxed profiler trait objects. Exits the process
+/// if a requested profiler fails to initialize or if no profilers are
+/// enabled.
+///
+/// # Arguments
+///
+/// * `system` - Whether to enable the system CPU/memory profiler.
+/// * `nvidia` - Whether to enable the NVIDIA GPU profiler.
+fn init_profilers(system: bool, nvidia: bool) -> Vec<Box<dyn Profiler + Send>> {
+    let mut profilers: Vec<Box<dyn Profiler + Send>> = Vec::new();
+
+    if system {
+        match SystemProfiler::new() {
+            Ok(p) => profilers.push(Box::new(p)),
+            Err(e) => {
+                error!("failed to initialize system profiler: {e}");
+                std::process::exit(1);
+            }
         }
     }
+
+    if nvidia {
+        match NvidiaProfiler::new() {
+            Ok(p) => profilers.push(Box::new(p)),
+            Err(e) => {
+                error!("failed to initialize NVIDIA profiler: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    if profilers.is_empty() {
+        error!("no profilers enabled — specify one or more profilers using CLI flags");
+        std::process::exit(1);
+    }
+
+    profilers
 }
 
 /// Parse arguments, start the collector thread, and run the HTTP server.
@@ -56,37 +106,18 @@ fn init_profiler<P: Profiler + Send + 'static>(
 async fn main() {
     let args = Args::parse();
 
+    init_logging(args.quiet).expect("Failed to initialize logging");
+
     let hpc_scheduler = Box::new(SlurmScheduler::default());
-
-    let mut profilers: Vec<Box<dyn Profiler + Send>> = Vec::new();
-    if args.system {
-        profilers.push(init_profiler(SystemProfiler::new(), "system"));
-    }
-
-    if args.nvidia {
-        profilers.push(init_profiler(NvidiaProfiler::new(), "NVIDIA"));
-    }
-
-    if profilers.is_empty() {
-        eprintln!("no profilers enabled. Specify one or more profilers using CLI flags.");
-        std::process::exit(1);
-    }
-
-    // Instantiate a metrics store for caching metrics in between profiler passes
+    let hardware_profilers = init_profilers(args.system, args.nvidia);
     let metrics_store = Arc::new(ArcSwap::from_pointee(String::new()));
 
-    // Spawn the background collector thread
     let interval = Duration::from_secs(args.interval);
-    collector::spawn(
-        profilers,
-        hpc_scheduler,
-        Arc::clone(&metrics_store),
-        interval,
-    );
+    collector::spawn(hardware_profilers, hpc_scheduler, Arc::clone(&metrics_store), interval);
 
-    // Start the HTTP server on the async runtime
+    info!("starting HTTP server on {}:{}", args.host, args.port);
     if let Err(e) = api::serve(&args.host, args.port, metrics_store).await {
-        eprintln!("server error: {e}");
+        error!("server error: {e}");
         std::process::exit(1);
     }
 }

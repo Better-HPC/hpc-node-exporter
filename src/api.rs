@@ -11,7 +11,9 @@ use arc_swap::ArcSwap;
 use axum::extract::State;
 use axum::routing::get;
 use axum::Router;
+use log::info;
 use tokio::net::TcpListener;
+
 use crate::collector::MetricsStore;
 
 /// GET /metrics — return the latest pre-collected metrics snapshot.
@@ -72,7 +74,7 @@ pub async fn serve(
     let addr = format!("{host}:{port}");
     let listener = TcpListener::bind(&addr).await?;
 
-    eprintln!("listening on {addr}");
+    info!("listening on http://{addr}");
     axum::serve(listener, router).await?;
     Ok(())
 }

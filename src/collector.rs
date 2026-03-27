@@ -9,6 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use arc_swap::ArcSwap;
+use log::{error, warn};
 
 use crate::profilers::Profiler;
 use crate::schedulers::HpcScheduler;
@@ -63,7 +64,7 @@ pub fn spawn(
 /// metrics from all profilers.
 fn collect(profilers: &mut [Box<dyn Profiler + Send>], scheduler: &dyn HpcScheduler) -> String {
     let processes = scheduler.get_processes().unwrap_or_else(|e| {
-        eprintln!("warning: failed to fetch job pids: {e}");
+        warn!("failed to fetch job pids: {e}");
         Vec::new()
     });
 
@@ -77,7 +78,7 @@ fn collect(profilers: &mut [Box<dyn Profiler + Send>], scheduler: &dyn HpcSchedu
                 }
             }
             Err(e) => {
-                eprintln!("failed to collect metrics: {e}");
+                error!("failed to collect metrics: {e}");
             }
         }
     }
