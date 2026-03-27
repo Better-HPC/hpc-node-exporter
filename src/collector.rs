@@ -14,12 +14,6 @@ use log::{error, warn};
 use crate::profilers::Profiler;
 use crate::schedulers::HpcScheduler;
 
-/// Shared application state passed to request handlers.
-pub struct MetricsStore {
-    /// The latest pre-rendered Prometheus metrics snapshot.
-    pub snapshot: Arc<ArcSwap<String>>,
-}
-
 /// Spawn the background collector thread.
 ///
 /// The thread takes exclusive ownership of the profilers and scheduler,
