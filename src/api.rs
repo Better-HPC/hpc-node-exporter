@@ -60,9 +60,10 @@ pub async fn serve(
     port: u16,
     snapshot: Arc<ArcSwap<String>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let snapshot: &'static ArcSwap<String> = Box::leak(Box::new(ArcSwap::from_pointee(
-        snapshot.load().as_ref().clone(),
-    )));
+    let snapshot: &'static ArcSwap<String> = {
+        let leaked: &'static Arc<ArcSwap<String>> = Box::leak(Box::new(snapshot));
+        leaked.as_ref()
+    };
 
     let router = build_router(snapshot);
     let addr = format!("{host}:{port}");
