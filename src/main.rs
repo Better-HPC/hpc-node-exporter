@@ -112,12 +112,18 @@ async fn main() {
     let hardware_profilers = init_profilers(args.system, args.nvidia);
     let metrics_store = Arc::new(ArcSwap::from_pointee(String::new()));
 
-    let interval = Duration::from_secs(args.interval);
-    collector::spawn(hardware_profilers, hpc_scheduler, Arc::clone(&metrics_store), interval);
+    collector::spawn(
+        hardware_profilers,
+        hpc_scheduler,
+        Arc::clone(&metrics_store),
+        Duration::from_secs(args.interval),
+    );
 
     info!("starting HTTP server on {}:{}", args.host, args.port);
-    if let Err(e) = api::serve(&args.host, args.port, metrics_store).await {
-        error!("server error: {e}");
-        std::process::exit(1);
-    }
+    api::serve(&args.host, args.port, metrics_store)
+        .await
+        .unwrap_or_else(|e| {
+            error!("server error: {e}");
+            std::process::exit(1);
+        });
 }

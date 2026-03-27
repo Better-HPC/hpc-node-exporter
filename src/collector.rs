@@ -14,17 +14,11 @@ use log::{error, warn};
 use crate::profilers::Profiler;
 use crate::schedulers::HpcScheduler;
 
-/// Shared application state passed to request handlers.
-pub struct MetricsStore {
-    /// The latest pre-rendered Prometheus metrics snapshot.
-    pub snapshot: Arc<ArcSwap<String>>,
-}
-
 /// Spawn the background collector thread.
 ///
 /// The thread takes exclusive ownership of the profilers and scheduler,
 /// collecting metrics in a loop and publishing the rendered output to
-/// the shared `snapshot`. The thread runs for the lifetime of the process.
+/// a shared `snapshot`. The thread runs for the lifetime of the process.
 ///
 /// # Arguments
 ///
@@ -47,11 +41,10 @@ pub fn spawn(
 
 /// Run a single collection pass across all profilers.
 ///
-/// Fetches active processes from the scheduler, then collects metrics
-/// from each profiler and renders them into a single Prometheus-format
-/// string. Failures at any stage are logged and skipped rather than
-/// propagated, ensuring that one broken profiler or a transient scheduler
-/// error doesn't take down the collector loop.
+/// Collects hardware metrics from each profiler and renders them
+/// into a single Prometheus-format string. Failures at any stage
+/// are logged and skipped rather than propagated, ensuring partial
+/// metrics are still reported if a single profiler fails.
 ///
 /// # Arguments
 ///
