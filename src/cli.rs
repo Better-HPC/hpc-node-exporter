@@ -29,6 +29,10 @@ pub struct Args {
     /// Metric collection interval in seconds.
     #[arg(long, default_value_t = 1, value_name = "SECONDS")]
     pub interval: u64,
+
+    /// Suppress console log output.
+    #[arg(long)]
+    pub quiet: bool,
 }
 
 impl Args {

@@ -21,6 +21,42 @@ use crate::profilers::system::SystemProfiler;
 use crate::profilers::Profiler;
 use crate::schedulers::slurm::SlurmScheduler;
 
+/// Configure logging to and optionally to stdout.
+///
+/// # Arguments
+///
+/// * `quiet` - When `true`, suppresses console log output.
+///
+/// # Errors
+///
+/// Returns an error if the syslog socket cannot be opened or the
+/// global logger has already been set.
+fn init_logging(quiet: bool) -> Result<(), Box<dyn Error>> {
+    let syslog_formatter = syslog::Formatter3164 {
+        facility: syslog::Facility::LOG_USER,
+        hostname: None,
+        process: "keystone-exporter".to_owned(),
+        pid: 0,
+    };
+
+    let format =
+        |out: fern::FormatCallback, message: &std::fmt::Arguments, record: &log::Record| {
+            out.finish(format_args!("[{}] {}", record.level(), message))
+        };
+
+    let mut config = fern::Dispatch::new()
+        .level(log::LevelFilter::Info)
+        .format(format)
+        .chain(syslog::unix(syslog_formatter)?);
+
+    if !quiet {
+        config = config.chain(std::io::stdout());
+    }
+
+    config.apply()?;
+    Ok(())
+}
+
 /// Initialize a profiler or exit with an error message.
 ///
 /// Unwraps the profiler construction result and boxes it as a trait
@@ -55,9 +91,8 @@ fn init_profiler<P: Profiler + Send + 'static>(
 /// HTTP server fails to start.
 #[tokio::main]
 async fn main() {
-    env_logger::init();
-
     let args = Args::parse();
+    init_logging(args.quiet).unwrap_or_else(|e| eprintln!("Failed to initialize logging"));
 
     let hpc_scheduler = Box::new(SlurmScheduler::default());
 
