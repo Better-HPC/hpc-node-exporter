@@ -1,3 +1,8 @@
+//! Entry point for the `keystone-exporter` binary.
+//!
+//! Parses command-line arguments, initializes the requested profilers
+//! starts background metrics collection, and launches the HTTP server.
+
 mod api;
 mod cli;
 mod collector;
@@ -16,6 +21,20 @@ use crate::profilers::Profiler;
 use crate::schedulers::slurm::SlurmScheduler;
 
 /// Initialize a profiler or exit with an error message.
+///
+/// Unwraps the profiler construction result and boxes it as a trait
+/// object. If initialization fails, the error is printed to stderr
+/// and the process exits immediately — profiler availability is
+/// considered a hard requirement at startup.
+///
+/// # Arguments
+///
+/// * `result` - The result of constructing the profiler.
+/// * `name` - A human-readable name for the profiler, used in error messages.
+///
+/// # Returns
+///
+/// A boxed [`Profiler`] trait object ready for use by the collector.
 fn init_profiler<P: Profiler + Send + 'static>(
     result: Result<P, Box<dyn Error>>,
     name: &str,
@@ -29,6 +48,10 @@ fn init_profiler<P: Profiler + Send + 'static>(
     }
 }
 
+/// Parse arguments, start the collector thread, and run the HTTP server.
+///
+/// The process exits with status 1 if no profilers are enabled or the
+/// HTTP server fails to start.
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
@@ -49,11 +72,17 @@ async fn main() {
         std::process::exit(1);
     }
 
+    // Instantiate a metrics store for caching metrics in between profiler passes
     let metrics_store = Arc::new(ArcSwap::from_pointee(String::new()));
 
     // Spawn the background collector thread
     let interval = Duration::from_secs(args.interval);
-    collector::spawn(profilers, hpc_scheduler, Arc::clone(&metrics_store), interval);
+    collector::spawn(
+        profilers,
+        hpc_scheduler,
+        Arc::clone(&metrics_store),
+        interval,
+    );
 
     // Start the HTTP server on the async runtime
     if let Err(e) = api::serve(&args.host, args.port, metrics_store).await {

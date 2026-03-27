@@ -1,8 +1,8 @@
-//! Background metric collection thread.
+//! Background metric collection.
 //!
-//! Owns all profilers and the scheduler exclusively — no synchronization
-//! needed around mutable profiler state. Publishes a pre-rendered
-//! Prometheus snapshot to an [`ArcSwap`] on a configurable interval.
+//! Metrics collection is executed in a background thread, rendered
+//! into Prometheus format, and published to an [`ArcSwap`] for
+//! consumption by the rest of the application.
 
 use std::sync::Arc;
 use std::thread;
@@ -51,6 +51,16 @@ pub fn spawn(
 /// string. Failures at any stage are logged and skipped rather than
 /// propagated, ensuring that one broken profiler or a transient scheduler
 /// error doesn't take down the collector loop.
+///
+/// # Arguments
+///
+/// * `profilers` - The profiler instances to collect from.
+/// * `scheduler` - The HPC scheduler used to discover active job PIDs.
+///
+/// # Returns
+///
+/// A Prometheus text exposition format string containing the rendered
+/// metrics from all profilers.
 fn collect(profilers: &mut [Box<dyn Profiler + Send>], scheduler: &dyn HpcScheduler) -> String {
     let processes = scheduler.get_processes().unwrap_or_else(|e| {
         eprintln!("warning: failed to fetch job pids: {e}");

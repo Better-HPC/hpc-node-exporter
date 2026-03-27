@@ -1,7 +1,6 @@
 //! Profiler trait and shared metric types.
 //!
-//! This module defines the [`Profiler`] trait and the [`Metric`] type used
-//! by all hardware-specific profiler implementations.
+//! This module defines traits and types used by all hardware-specific profiler implementations.
 
 pub mod nvidia;
 pub mod system;
@@ -30,7 +29,7 @@ impl Metric {
         HOSTNAME.get_or_init(|| gethostname::gethostname().to_string_lossy().into_owned())
     }
 
-    /// Escape a Prometheus label value.
+    /// Escape Prometheus label text.
     ///
     /// Prometheus requires label values to be enclosed in double quotes
     /// and for backslashes, double quotes, and newlines to be escaped.

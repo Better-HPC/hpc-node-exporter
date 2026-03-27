@@ -13,7 +13,8 @@ use crate::schedulers::HpcProcess;
 
 /// Aggregated resource usage for a single job step.
 ///
-/// Represents system usage summed over all active process running under the same `(jobid, stepid)`.
+/// Represents system usage summed over all active HPC process running
+/// under the same `(jobid, stepid)`.
 #[derive(Debug, Default)]
 struct SystemJobSnapshot {
     cpu_usage: f32,

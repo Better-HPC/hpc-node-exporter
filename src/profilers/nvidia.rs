@@ -15,7 +15,8 @@ use crate::schedulers::HpcProcess;
 
 /// Aggregated per-job GPU memory usage across one or more devices.
 ///
-/// Represents GPU usage summed over all active process running under the same `(jobid, stepid)`.
+/// Represents GPU usage summed over all active HPC process running
+/// under the same `(jobid, stepid)`.
 #[derive(Debug, Default)]
 struct NvidiaJobSnapshot {
     memory_bytes: u64,

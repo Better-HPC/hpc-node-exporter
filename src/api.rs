@@ -15,11 +15,28 @@ use tokio::net::TcpListener;
 use crate::collector::MetricsStore;
 
 /// GET /metrics — return the latest pre-collected metrics snapshot.
+///
+/// Loads the current snapshot from application [`ArcSwap`] and clones
+/// the inner string. The clone is cheap relative to a full collection
+/// pass, and [`ArcSwap::load`] is lock-free, so concurrent scrapes do
+/// not block each other or the collector thread.
+///
+/// # Returns
+///
+/// The latest Prometheus-format metrics string.
 async fn metrics_handler(State(state): State<&MetricsStore>) -> String {
     state.snapshot.load().as_ref().clone()
 }
 
 /// Build the Axum router with shared application state.
+///
+/// # Arguments
+///
+/// * `state` - A `'static` reference to the shared [`MetricsStore`].
+///
+/// # Returns
+///
+/// A configured [`Router`] with the `/metrics` route registered.
 fn build_router(state: &'static MetricsStore) -> Router {
     Router::new()
         .route("/metrics", get(metrics_handler))
@@ -32,6 +49,12 @@ fn build_router(state: &'static MetricsStore) -> Router {
 /// populated by the collector thread. This function leaks the [`MetricsStore`]
 /// into a `&'static` reference so it can be shared across Axum handlers
 /// without additional `Arc` overhead.
+///
+/// # Arguments
+///
+/// * `host` - The network interface to bind to (e.g., `"127.0.0.1"`).
+/// * `port` - The TCP port to listen on.
+/// * `snapshot` - The shared snapshot that the collector thread writes to.
 ///
 /// # Errors
 ///
