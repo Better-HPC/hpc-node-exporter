@@ -40,6 +40,7 @@ async fn metrics_handler(State(state): State<&MetricsStore>) -> String {
 fn build_router(state: &'static MetricsStore) -> Router {
     Router::new()
         .route("/metrics", get(metrics_handler))
+        .route("/metrics/", get(metrics_handler))
         .with_state(state)
 }
 
