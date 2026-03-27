@@ -1,6 +1,6 @@
 //! Entry point for the `keystone-exporter` binary.
 //!
-//! Parses command-line arguments, initializes the requested profilers
+//! Parses command-line arguments, initializes the requested profilers,
 //! starts background metrics collection, and launches the HTTP server.
 
 mod api;
@@ -10,6 +10,7 @@ mod profilers;
 mod schedulers;
 
 use arc_swap::ArcSwap;
+use log::{error, info};
 use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
@@ -42,7 +43,7 @@ fn init_profiler<P: Profiler + Send + 'static>(
     match result {
         Ok(p) => Box::new(p),
         Err(e) => {
-            eprintln!("failed to initialize {name} profiler: {e}");
+            error!("failed to initialize {name} profiler: {e}");
             std::process::exit(1);
         }
     }
@@ -54,6 +55,8 @@ fn init_profiler<P: Profiler + Send + 'static>(
 /// HTTP server fails to start.
 #[tokio::main]
 async fn main() {
+    env_logger::init();
+
     let args = Args::parse();
 
     let hpc_scheduler = Box::new(SlurmScheduler::default());
@@ -68,7 +71,7 @@ async fn main() {
     }
 
     if profilers.is_empty() {
-        eprintln!("no profilers enabled. Specify one or more profilers using CLI flags.");
+        error!("no profilers enabled — specify one or more profilers using CLI flags");
         std::process::exit(1);
     }
 
@@ -85,8 +88,9 @@ async fn main() {
     );
 
     // Start the HTTP server on the async runtime
+    info!("starting HTTP server on {}:{}", args.host, args.port);
     if let Err(e) = api::serve(&args.host, args.port, metrics_store).await {
-        eprintln!("server error: {e}");
+        error!("server error: {e}");
         std::process::exit(1);
     }
 }

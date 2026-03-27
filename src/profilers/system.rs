@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 
+use log::warn;
 use sysinfo::{Networks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
 use crate::profilers::{Metric, Profiler};
@@ -203,7 +204,7 @@ impl SystemProfiler {
         for proc in processes {
             let pid = Pid::from(proc.pid as usize);
             let Some(info) = self.sys.process(pid) else {
-                eprintln!("warning: pid {} not found", proc.pid);
+                warn!("pid {} not found (job {}, step {})", proc.pid, proc.jobid, proc.stepid);
                 continue;
             };
 
