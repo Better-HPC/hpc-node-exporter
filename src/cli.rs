@@ -10,6 +10,14 @@ use clap::Parser;
     version
 )]
 pub struct Args {
+    /// Enable system CPU metrics.
+    #[arg(long)]
+    pub system: bool,
+
+    /// Enable NVIDIA GPU metrics.
+    #[arg(long)]
+    pub nvidia: bool,
+
     /// Host interface to bind to.
     #[arg(long, default_value = "127.0.0.1")]
     pub host: String,
@@ -18,13 +26,9 @@ pub struct Args {
     #[arg(long, default_value_t = 9105)]
     pub port: u16,
 
-    /// Include system CPU metrics.
-    #[arg(long)]
-    pub system: bool,
-
-    /// Include NVIDIA GPU metrics.
-    #[arg(long)]
-    pub nvidia: bool,
+    /// Metric collection interval in seconds.
+    #[arg(long, default_value_t = 1, value_name = "SECONDS")]
+    pub interval: u64,
 }
 
 impl Args {
