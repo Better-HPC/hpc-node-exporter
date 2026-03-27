@@ -5,7 +5,10 @@ edition = "2021"
 description = "An HPC telemetry agent designed for the Keystone platform."
 
 [dependencies]
+arc-swap = "1.9.0"
+axum = "0.8.8"
 clap = { version = "4.5.60", features = ["derive"] }
 gethostname = "1.1.0"
 nvml-wrapper = "0.12.0"
 sysinfo = "0.38.2"
+tokio = { version = "1.50.0", features = ["rt-multi-thread", "macros", "net"] }

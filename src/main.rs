@@ -1,21 +1,25 @@
+mod api;
 mod cli;
+mod collector;
 mod profilers;
 mod schedulers;
 
+use arc_swap::ArcSwap;
 use std::error::Error;
+use std::sync::Arc;
+use std::time::Duration;
 
 use crate::cli::Args;
 use crate::profilers::nvidia::NvidiaProfiler;
 use crate::profilers::system::SystemProfiler;
 use crate::profilers::Profiler;
 use crate::schedulers::slurm::SlurmScheduler;
-use crate::schedulers::HpcScheduler;
 
 /// Initialize a profiler or exit with an error message.
-fn init_profiler<P: Profiler + 'static>(
+fn init_profiler<P: Profiler + Send + 'static>(
     result: Result<P, Box<dyn Error>>,
     name: &str,
-) -> Box<dyn Profiler> {
+) -> Box<dyn Profiler + Send> {
     match result {
         Ok(p) => Box::new(p),
         Err(e) => {
@@ -25,13 +29,13 @@ fn init_profiler<P: Profiler + 'static>(
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = Args::parse();
-    let scheduler = SlurmScheduler::default();
 
-    // Build the list of enabled profilers from CLI flags
-    let mut profilers: Vec<Box<dyn Profiler>> = Vec::new();
+    let hpc_scheduler = Box::new(SlurmScheduler::default());
 
+    let mut profilers: Vec<Box<dyn Profiler + Send>> = Vec::new();
     if args.system {
         profilers.push(init_profiler(SystemProfiler::new(), "system"));
     }
@@ -40,26 +44,20 @@ fn main() {
         profilers.push(init_profiler(NvidiaProfiler::new(), "NVIDIA"));
     }
 
-    // Fetch active processes from the scheduler
-    let processes = match scheduler.get_processes() {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("failed to fetch job pids: {e}");
-            std::process::exit(1);
-        }
-    };
+    if profilers.is_empty() {
+        eprintln!("no profilers enabled. Specify one or more profilers using CLI flags.");
+        std::process::exit(1);
+    }
 
-    // Collect and display metrics from each enabled profiler
-    for profiler in &mut profilers {
-        match profiler.collect_metrics(&processes) {
-            Ok(metrics) => {
-                for m in &metrics {
-                    println!("{}", m.to_prometheus());
-                }
-            }
-            Err(e) => {
-                eprintln!("failed to collect metrics: {e}");
-            }
-        }
+    let metrics_store = Arc::new(ArcSwap::from_pointee(String::new()));
+
+    // Spawn the background collector thread
+    let interval = Duration::from_secs(args.interval);
+    collector::spawn(profilers, hpc_scheduler, Arc::clone(&metrics_store), interval);
+
+    // Start the HTTP server on the async runtime
+    if let Err(e) = api::serve(&args.host, args.port, metrics_store).await {
+        eprintln!("server error: {e}");
+        std::process::exit(1);
     }
 }

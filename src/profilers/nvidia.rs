@@ -17,7 +17,7 @@ use crate::schedulers::HpcProcess;
 ///
 /// Represents GPU usage summed over all active process running under the same `(jobid, stepid)`.
 #[derive(Debug, Default)]
-struct GpuJobSnapshot {
+struct NvidiaJobSnapshot {
     memory_bytes: u64,
 }
 
@@ -99,7 +99,7 @@ impl NvidiaProfiler {
             .collect();
 
         // Accumulate per-job memory across devices
-        let mut snapshots: HashMap<(String, String, String), GpuJobSnapshot> = HashMap::new();
+        let mut snapshots: HashMap<(String, String, String), NvidiaJobSnapshot> = HashMap::new();
 
         for i in 0..count {
             let device = match self.nvml.device_by_index(i) {
@@ -227,10 +227,7 @@ impl Profiler for NvidiaProfiler {
     /// Returns an error if a fundamental NVML failure occurs. Individual
     /// device or process query failures are logged as warnings and skipped
     /// rather than propagated.
-    fn collect_metrics(
-        &mut self,
-        processes: &[HpcProcess],
-    ) -> Result<Vec<Metric>, Box<dyn Error>> {
+    fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
         Ok(self.collect_all(processes))
     }
 }
