@@ -15,7 +15,7 @@ use crate::schedulers::HpcProcess;
 ///
 /// Represents system usage summed over all active process running under the same `(jobid, stepid)`.
 #[derive(Debug, Default)]
-struct JobSnapshot {
+struct SystemJobSnapshot {
     cpu_usage: f32,
     memory_bytes: u64,
     io_read_bytes: u64,
@@ -79,9 +79,7 @@ impl SystemProfiler {
     /// A vector of profiling metrics including: `node_cpu_usage_percent`.
     fn collect_cpu(&mut self) -> Vec<Metric> {
         self.sys.refresh_cpu_usage();
-        let total_cpu: f64 = self.sys.cpus().iter().map(
-            |c| c.cpu_usage() as f64
-        ).sum();
+        let total_cpu: f64 = self.sys.cpus().iter().map(|c| c.cpu_usage() as f64).sum();
 
         vec![Metric {
             name: "node_cpu_usage_percent",
@@ -173,8 +171,8 @@ impl SystemProfiler {
     /// 2. Looks the process up in the refreshed table. If the PID is no
     ///    longer running (e.g., it exited between the scheduler query and
     ///    now), a warning is printed and the process is skipped.
-    /// 3. Accumulates the process's stats into the [`JobSnapshot`] keyed
-    ///    by `(jobid, stepid)`.
+    /// 3. Accumulates the process's stats into the [`SystemJobSnapshot`]
+    ///    keyed by `(jobid, stepid)`.
     ///
     /// # Arguments
     ///
@@ -182,11 +180,11 @@ impl SystemProfiler {
     ///
     /// # Returns
     ///
-    /// A map from `(jobid, stepid)` to the aggregated [`JobSnapshot`] for that job step.
+    /// A map from `(jobid, stepid)` to the aggregated [`SystemJobSnapshot`] for that job step.
     fn collect_job_snapshots(
         &mut self,
         processes: &[HpcProcess],
-    ) -> HashMap<(String, String), JobSnapshot> {
+    ) -> HashMap<(String, String), SystemJobSnapshot> {
         let pids: Vec<Pid> = processes
             .iter()
             .map(|p| Pid::from(p.pid as usize))
@@ -200,7 +198,7 @@ impl SystemProfiler {
         self.sys
             .refresh_processes_specifics(ProcessesToUpdate::Some(&pids), false, refresh_kind);
 
-        let mut jobs: HashMap<(String, String), JobSnapshot> = HashMap::new();
+        let mut jobs: HashMap<(String, String), SystemJobSnapshot> = HashMap::new();
         for proc in processes {
             let pid = Pid::from(proc.pid as usize);
             let Some(info) = self.sys.process(pid) else {
