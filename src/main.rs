@@ -16,10 +16,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::cli::Args;
+use crate::profilers::job_count::JobCountProfiler;
 use crate::profilers::nvidia::NvidiaProfiler;
 use crate::profilers::system::SystemProfiler;
 use crate::profilers::Profiler;
 use crate::schedulers::slurm::SlurmScheduler;
+use crate::schedulers::HpcScheduler;
 
 /// Configure logging to syslog and optionally to stdout.
 ///
@@ -57,61 +59,66 @@ fn init_logging(quiet: bool) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Initialize the HPC job scheduler.
+///
+/// # Returns
+///
+/// A boxed [`HpcScheduler`] implementation used to discover active jobs.
+fn init_hpc_scheduler() -> Box<dyn HpcScheduler + Send> {
+    Box::new(SlurmScheduler::default())
+}
+
 /// Initialize hardware profilers.
 ///
-/// Returns a vector of boxed profiler trait objects. Exits the process
-/// if a requested profiler fails to initialize or if no profilers are
-/// enabled.
+/// Initialize and return a vector of user specified hardware
+/// profilers. A [`JobCountProfiler`] is included by default.
 ///
 /// # Arguments
 ///
 /// * `system` - Whether to enable the system CPU/memory profiler.
 /// * `nvidia` - Whether to enable the NVIDIA GPU profiler.
-fn init_profilers(system: bool, nvidia: bool) -> Vec<Box<dyn Profiler + Send>> {
+///
+/// # Errors
+///
+/// Returns an error if a requested hardware profiler fails to initialize.
+fn init_profilers(
+    system: bool,
+    nvidia: bool,
+) -> Result<Vec<Box<dyn Profiler + Send>>, Box<dyn Error>> {
     let mut profilers: Vec<Box<dyn Profiler + Send>> = Vec::new();
 
+    // Always enabled — reports the number of running HPC jobs
+    profilers.push(Box::new(JobCountProfiler::new()));
+
     if system {
-        match SystemProfiler::new() {
-            Ok(p) => profilers.push(Box::new(p)),
-            Err(e) => {
-                error!("failed to initialize system profiler: {e}");
-                std::process::exit(1);
-            }
-        }
+        profilers.push(Box::new(SystemProfiler::new()?));
     }
 
     if nvidia {
-        match NvidiaProfiler::new() {
-            Ok(p) => profilers.push(Box::new(p)),
-            Err(e) => {
-                error!("failed to initialize NVIDIA profiler: {e}");
-                std::process::exit(1);
-            }
-        }
+        profilers.push(Box::new(NvidiaProfiler::new()?));
     }
 
-    if profilers.is_empty() {
-        error!("no profilers enabled — specify one or more profilers using CLI flags");
-        std::process::exit(1);
-    }
-
-    profilers
+    Ok(profilers)
 }
 
 /// Parse arguments, start the collector thread, and run the HTTP server.
 ///
-/// The process exits with status 1 if no profilers are enabled or the
-/// HTTP server fails to start.
+/// The process exits with status 1 if the HTTP server fails to start.
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
 
     init_logging(args.quiet).expect("Failed to initialize logging");
 
-    let hpc_scheduler = Box::new(SlurmScheduler::default());
-    let hardware_profilers = init_profilers(args.system, args.nvidia);
-    let metrics_store = Arc::new(ArcSwap::from_pointee(String::new()));
+    // Initialize system interfaces
+    let hpc_scheduler = init_hpc_scheduler();
+    let hardware_profilers = init_profilers(args.system, args.nvidia).unwrap_or_else(|e| {
+        error!("failed to initialize profilers: {e}");
+        std::process::exit(1);
+    });
 
+    // Launch metrics collection
+    let metrics_store = Arc::new(ArcSwap::from_pointee(String::new()));
     collector::spawn(
         hardware_profilers,
         hpc_scheduler,
@@ -119,6 +126,7 @@ async fn main() {
         Duration::from_secs(args.interval),
     );
 
+    // Launch metrics server
     info!("starting HTTP server on {}:{}", args.host, args.port);
     api::serve(&args.host, args.port, metrics_store)
         .await
