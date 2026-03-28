@@ -1,0 +1,37 @@
+name: 🎯 Release
+
+on:
+  release:
+    types: [ "released" ]
+
+jobs:
+  version:
+    name: Get Release Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+
+    steps:
+      - name: Determine version from release tag
+        id: get_version
+        run: |
+          release_tag=${{github.ref}}
+          version="${release_tag#refs/tags/v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build
+    needs: [ version ]
+    uses: ./.github/workflows/Build.yml
+    with:
+      version: ${{needs.version.outputs.version}}
+
+  publish:
+    name: Publish
+    needs: [ version, build ]
+    uses: ./.github/workflows/Publish.yml
+    secrets: inherit
+    permissions:
+      id-token: write
+    with:
+      version: ${{needs.version.outputs.version}}
