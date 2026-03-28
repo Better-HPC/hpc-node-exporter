@@ -9,12 +9,18 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::routing::get;
 use axum::Router;
 use log::info;
 use tokio::net::TcpListener;
 
-/// GET /metrics — return the latest pre-collected metrics snapshot.
+/// GET handler returning an empty 200 OK response.
+async fn status_handler() -> StatusCode {
+    StatusCode::OK
+}
+
+/// GET handler returning the latest metrics snapshot.
 ///
 /// # Returns
 ///
@@ -31,9 +37,10 @@ async fn metrics_handler(State(snapshot): State<&'static ArcSwap<String>>) -> St
 ///
 /// # Returns
 ///
-/// A configured [`Router`] with the `/metrics` route registered.
+/// A configured [`Router`] with the `/` and `/metrics` routes registered.
 fn build_router(snapshot: &'static ArcSwap<String>) -> Router {
     Router::new()
+        .route("/", get(status_handler))
         .route("/metrics", get(metrics_handler))
         .route("/metrics/", get(metrics_handler))
         .with_state(snapshot)
