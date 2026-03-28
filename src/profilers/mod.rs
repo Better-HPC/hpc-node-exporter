@@ -6,15 +6,18 @@ pub mod nvidia;
 pub mod system;
 
 use std::error::Error;
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
 use crate::schedulers::HpcProcess;
+
+/// The local hostname, resolved once on first access.
+pub static HOSTNAME: LazyLock<String> =
+    LazyLock::new(|| gethostname::gethostname().to_string_lossy().into_owned());
 
 /// A single node telemetry measurement.
 ///
 /// Each `Metric` carries a metric name, a set of key-value labels, and the observed numeric value.
-/// The hostname for the parent system is automatically injected into the label values when rendered
-/// to Prometheus format. All other labels must be specified manually.
+/// All labels (including hostname) must be specified explicitly by the caller.
 #[derive(Debug)]
 pub struct Metric {
     pub name: &'static str,
@@ -23,12 +26,6 @@ pub struct Metric {
 }
 
 impl Metric {
-    /// Return the local hostname, resolved once and cached for the program lifetime.
-    fn hostname() -> &'static str {
-        static HOSTNAME: OnceLock<String> = OnceLock::new();
-        HOSTNAME.get_or_init(|| gethostname::gethostname().to_string_lossy().into_owned())
-    }
-
     /// Escape Prometheus label text.
     ///
     /// Prometheus requires label values to be enclosed in double quotes
@@ -41,10 +38,8 @@ impl Metric {
 
     /// Return the metric in Prometheus line format.
     pub fn to_prometheus(&self) -> String {
-        let host = Self::hostname();
-
         // Render individual label/value pairs as strings
-        let mut parts = vec![format!(r#"hostname="{}""#, Self::escape_label_value(host))];
+        let mut parts = Vec::with_capacity(self.labels.len());
         for (k, v) in &self.labels {
             parts.push(format!(r#"{k}="{}""#, Self::escape_label_value(v)));
         }

@@ -11,7 +11,7 @@ use log::warn;
 use nvml_wrapper::enum_wrappers::device::TemperatureSensor;
 use nvml_wrapper::Nvml;
 
-use crate::profilers::{Metric, Profiler};
+use crate::profilers::{HOSTNAME, Metric, Profiler};
 use crate::schedulers::HpcProcess;
 
 /// Aggregated per-job GPU memory usage across one or more devices.
@@ -60,6 +60,24 @@ impl NvidiaProfiler {
         }
 
         Ok(Self { nvml })
+    }
+
+    /// Return base labels for a node-level GPU metric.
+    fn gpu_labels(gpu_uuid: &str) -> Vec<(&'static str, String)> {
+        vec![
+            ("hostname", HOSTNAME.clone()),
+            ("gpu_uuid", gpu_uuid.to_string()),
+        ]
+    }
+
+    /// Return base labels for a job-level GPU metric.
+    fn job_labels(jobid: &str, stepid: &str, gpu_uuid: &str) -> Vec<(&'static str, String)> {
+        vec![
+            ("hostname", HOSTNAME.clone()),
+            ("jobid", jobid.to_string()),
+            ("stepid", stepid.to_string()),
+            ("gpu_uuid", gpu_uuid.to_string()),
+        ]
     }
 
     /// Collect metrics for all GPUs and HPC jobs in a single pass.
@@ -120,7 +138,7 @@ impl NvidiaProfiler {
                 }
             };
 
-            let labels = vec![("gpu_uuid", uuid.clone())];
+            let labels = Self::gpu_labels(&uuid);
 
             // --- Node-level metrics ---
 
@@ -197,11 +215,7 @@ impl NvidiaProfiler {
         for ((jobid, stepid, gpu_uuid), snap) in &snapshots {
             metrics.push(Metric {
                 name: "job_gpu_memory_used_bytes",
-                labels: vec![
-                    ("jobid", jobid.clone()),
-                    ("stepid", stepid.clone()),
-                    ("gpu_uuid", gpu_uuid.clone()),
-                ],
+                labels: Self::job_labels(jobid, stepid, gpu_uuid),
                 value: snap.memory_bytes as f64,
             });
         }

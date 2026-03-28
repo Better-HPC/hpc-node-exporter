@@ -9,7 +9,7 @@ use std::error::Error;
 use log::warn;
 use sysinfo::{Networks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
-use crate::profilers::{Metric, Profiler};
+use crate::profilers::{HOSTNAME, Metric, Profiler};
 use crate::schedulers::HpcProcess;
 
 /// Aggregated resource usage for a single job step.
@@ -69,6 +69,20 @@ impl SystemProfiler {
         Ok(Self { sys, networks })
     }
 
+    /// Return base labels shared by all node-level metrics.
+    fn node_labels() -> Vec<(&'static str, String)> {
+        vec![("hostname", HOSTNAME.clone())]
+    }
+
+    /// Return base labels for a job-level metric.
+    fn job_labels(jobid: &str, stepid: &str) -> Vec<(&'static str, String)> {
+        vec![
+            ("hostname", HOSTNAME.clone()),
+            ("jobid", jobid.to_string()),
+            ("stepid", stepid.to_string()),
+        ]
+    }
+
     /// Collect CPU metrics summed across all cores.
     ///
     /// Calls [`System::refresh_cpu_usage`] to capture a new sample, then
@@ -85,7 +99,7 @@ impl SystemProfiler {
 
         vec![Metric {
             name: "node_cpu_usage_percent",
-            labels: vec![],
+            labels: Self::node_labels(),
             value: total_cpu,
         }]
     }
@@ -107,17 +121,17 @@ impl SystemProfiler {
         vec![
             Metric {
                 name: "node_memory_total_bytes",
-                labels: vec![],
+                labels: Self::node_labels(),
                 value: self.sys.total_memory() as f64,
             },
             Metric {
                 name: "node_memory_used_bytes",
-                labels: vec![],
+                labels: Self::node_labels(),
                 value: self.sys.used_memory() as f64,
             },
             Metric {
                 name: "node_memory_available_bytes",
-                labels: vec![],
+                labels: Self::node_labels(),
                 value: self.sys.available_memory() as f64,
             },
         ]
@@ -152,12 +166,12 @@ impl SystemProfiler {
         vec![
             Metric {
                 name: "node_net_rx_bytes",
-                labels: vec![],
+                labels: Self::node_labels(),
                 value: total_rx as f64,
             },
             Metric {
                 name: "node_net_tx_bytes",
-                labels: vec![],
+                labels: Self::node_labels(),
                 value: total_tx as f64,
             },
         ]
@@ -244,7 +258,7 @@ impl SystemProfiler {
         let mut metrics = Vec::new();
 
         for ((jobid, stepid), snap) in &snapshots {
-            let labels = vec![("jobid", jobid.clone()), ("stepid", stepid.clone())];
+            let labels = Self::job_labels(jobid, stepid);
 
             metrics.push(Metric {
                 name: "job_cpu_usage_percent",
