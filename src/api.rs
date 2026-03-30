@@ -48,9 +48,9 @@ fn build_router(snapshot: &'static ArcSwap<String>) -> Router {
 
 /// Start the HTTP server on the given host and port.
 ///
-/// The server reads rendered Prometheus metrics a shared
-/// [`ArcSwap<String>`] that is populated by a background
-/// collector thread.
+/// The server reads rendered Prometheus metrics from a
+/// shared [`ArcSwap<String>`] that is populated by a
+/// background collector thread.
 ///
 /// # Arguments
 ///
