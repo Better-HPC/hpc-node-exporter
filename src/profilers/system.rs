@@ -1,7 +1,7 @@
 //! Combined node-level and job-level system profiler.
 //!
-//! This module provides [`SystemProfiler`], which uses the [`sysinfo`] crate to
-//! collect telemetry for CPU, memory, swap, and per-job resource utilization.
+//! This module provides [`SystemProfiler`], which uses the [`sysinfo`] crate
+//! to collect telemetry for CPU, memory, swap, and per-job resource utilization.
 
 use std::collections::HashMap;
 use std::error::Error;
@@ -39,10 +39,9 @@ pub struct SystemProfiler {
 impl SystemProfiler {
     /// Create a new profiler with a pre-warmed CPU baseline.
     ///
-    /// The `sysinfo` crate reports CPU usage as a delta between successive
-    /// [`System::refresh_cpu_usage`] calls. This constructor performs the
-    /// first refresh so successive calls return a real value instead of a
-    /// meaningless zero placeholder.
+    /// System info is generally reported as a delta between successive
+    /// measurements. This constructor performs an initial measurement
+    /// so successive calls return a meaningful value.
     ///
     /// # Returns
     ///
@@ -77,15 +76,7 @@ impl SystemProfiler {
         ]
     }
 
-    /// Collect CPU metrics summed across all cores.
-    ///
-    /// Calls [`System::refresh_cpu_usage`] to capture a new sample, then
-    /// sums the per-core values from [`System::cpus`]. 100% utilization
-    /// represents full utilization of one core, so a 4-core machine at
-    /// full load reports 400%.
-    ///
-    /// Also reports the logical CPU count, system load averages (1, 5,
-    /// and 15 minute windows), and system uptime.
+    /// Collect CPU metrics across all cores.
     ///
     /// # Returns
     ///
@@ -133,9 +124,6 @@ impl SystemProfiler {
     }
 
     /// Collect physical memory and swap metrics.
-    ///
-    /// Returns metrics representing total, used, and available physical
-    /// memory, as well as total, used, and free swap space.
     ///
     /// # Returns
     ///

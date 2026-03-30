@@ -1,8 +1,7 @@
-//! Combined node-level and job-level NVIDIA GPU profiler.
+//! Hardware profiler for NVIDIA GPUs.
 //!
 //! This module provides [`NvidiaProfiler`], which uses the [`nvml_wrapper`]
-//! crate (safe Rust bindings for NVIDIA's Management Library) to collect
-//! telemetry for Nvidia GPU utilization.
+//! crate to collect telemetry for Nvidia GPU utilization.
 
 use std::collections::HashMap;
 use std::error::Error;
@@ -25,11 +24,10 @@ struct NvidiaJobSnapshot {
     process_count: u32,
 }
 
-/// A [`Profiler`] that collects NVIDIA GPU metrics.
+/// A [`Profiler`] for NVIDIA GPU metrics.
 ///
 /// Holds a long-lived [`Nvml`] handle that is initialized once at
-/// construction time. The NVML library is loaded dynamically, so the
-/// binary can run (and skip GPU metrics) on nodes without NVIDIA hardware.
+/// construction time.
 #[derive(Debug)]
 pub struct NvidiaProfiler {
     nvml: Nvml,
@@ -37,10 +35,6 @@ pub struct NvidiaProfiler {
 
 impl NvidiaProfiler {
     /// Initialize the NVML library and return a new profiler instance.
-    ///
-    /// Calls [`Nvml::init`] to dynamically load `libnvidia-ml.so` and
-    /// resolve its function symbols, then verifies that at least one GPU
-    /// device is visible.
     ///
     /// # Returns
     ///
@@ -62,7 +56,7 @@ impl NvidiaProfiler {
         Ok(Self { nvml })
     }
 
-    /// Return base labels for a node-level GPU metric.
+    /// Return common labels for a node-level GPU metric.
     fn gpu_labels(gpu_uuid: &str) -> Vec<(&'static str, String)> {
         vec![
             ("hostname", HOSTNAME.clone()),
@@ -70,7 +64,7 @@ impl NvidiaProfiler {
         ]
     }
 
-    /// Return base labels for a job-level GPU metric.
+    /// Return common labels for a job-level GPU metric.
     fn job_labels(jobid: &str, stepid: &str, gpu_uuid: &str) -> Vec<(&'static str, String)> {
         vec![
             ("hostname", HOSTNAME.clone()),
@@ -82,19 +76,16 @@ impl NvidiaProfiler {
 
     /// Collect metrics for all GPUs and HPC jobs in a single pass.
     ///
-    /// For each device, collects both node-level telemetry (utilization,
-    /// memory, temperature, power, clocks, PCIe throughput, ECC errors,
-    /// fan speed, encoder/decoder utilization) and per-job GPU memory
-    /// usage by matching running compute process PIDs against the
-    /// scheduler's process list.
+    /// For each device, collects both node-level telemetry and 
+    /// per-job GPU usage by matching running process PIDs against
+    /// the scheduler's process list.
     ///
-    /// If a device query fails (e.g., the GPU falls off the bus mid-scrape),
-    /// a warning is logged and that device is skipped rather than failing
-    /// the entire collection.
+    /// If a device query fails a warning is logged and the device
+    /// is skipped rather than failing the entire collection.
     ///
     /// # Arguments
     ///
-    /// * `processes` - Active system processes to collect metrics for.
+    /// * `processes` - System processes to collect metrics for.
     ///
     /// # Returns
     ///
@@ -265,7 +256,7 @@ impl Profiler for NvidiaProfiler {
     ///
     /// # Arguments
     ///
-    /// * `processes` - Active system processes to collect metrics for.
+    /// * `processes` - System processes to collect metrics for.
     ///
     /// # Returns
     ///

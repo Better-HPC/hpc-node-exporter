@@ -1,7 +1,6 @@
 //! Default profiler that is always enabled.
 //!
-//! Reports scheduler-level metrics derived entirely from the process
-//! list provided by the HPC scheduler.
+//! Reports scheduler-level metrics derived entirely from the HPC scheduler.
 
 use std::collections::HashSet;
 use std::error::Error;
@@ -11,8 +10,8 @@ use crate::schedulers::HpcProcess;
 
 /// A [`Profiler`] that reports baseline HPC scheduler metrics.
 ///
-/// Jobs are identified by their `jobid`; multiple processes (steps) belonging
-/// to the same job are counted once.
+/// Jobs are identified by their `jobid`; multiple processes (steps)
+/// belonging to the same job are counted once.
 #[derive(Debug, Default)]
 pub struct DefaultProfiler;
 
@@ -27,7 +26,7 @@ impl Profiler for DefaultProfiler {
     ///
     /// # Arguments
     ///
-    /// * `processes` - Active system processes reported by the HPC scheduler.
+    /// * `processes` - System processes to collect metrics for.
     ///
     /// # Returns
     ///
