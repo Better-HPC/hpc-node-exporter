@@ -88,8 +88,8 @@ impl Profiler for NvidiaProfiler {
     ///
     /// # Errors
     ///
-    /// Returns an error if a fundamental NVML failure occurs. Individual
-    /// device or process query failures are logged as warnings and skipped.
+    /// Errors only if a fundamental NVML failure occurs. Individual device
+    /// or process query failures are logged as warnings and skipped.
     fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
         let mut metrics = Vec::new();
 

@@ -329,7 +329,7 @@ impl Profiler for SystemProfiler {
     ///
     /// # Arguments
     ///
-    /// * `processes` - Active system processes to collect metrics for.
+    /// * `processes` - System processes to collect metrics for.
     ///
     /// # Returns
     ///
