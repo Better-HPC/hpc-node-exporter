@@ -9,7 +9,7 @@ use std::error::Error;
 use log::warn;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
-use crate::profilers::{HOSTNAME, Metric, Profiler};
+use crate::profilers::{Metric, Profiler, HOSTNAME};
 use crate::schedulers::HpcProcess;
 
 /// Aggregated resource usage for a single job step.
@@ -80,14 +80,19 @@ impl SystemProfiler {
     ///
     /// # Returns
     ///
-    /// A vector of node-level CPU metrics.
+    /// A vector of node-level CPU metrics:
+    ///
+    /// * `kys_sys_cpu_usage_percent`
+    /// * `kys_sys_cpu_count`
+    /// * `kys_sys_load_avg_1m`
+    /// * `kys_sys_load_avg_5m`
+    /// * `kys_sys_load_avg_15m`
     fn collect_cpu(&mut self) -> Vec<Metric> {
         self.sys.refresh_cpu_usage();
 
         let total_cpu: f64 = self.sys.cpus().iter().map(|c| c.cpu_usage() as f64).sum();
         let cpu_count = self.sys.cpus().len() as f64;
         let load = System::load_average();
-        let uptime = System::uptime();
 
         vec![
             Metric {
@@ -115,11 +120,6 @@ impl SystemProfiler {
                 labels: Self::node_labels(),
                 value: load.fifteen,
             },
-            Metric {
-                name: "kys_sys_uptime_seconds",
-                labels: Self::node_labels(),
-                value: uptime as f64,
-            },
         ]
     }
 
@@ -127,7 +127,14 @@ impl SystemProfiler {
     ///
     /// # Returns
     ///
-    /// A vector of node-level memory and swap metrics.
+    /// A vector of node-level memory and swap metrics:
+    ///
+    /// * `kys_sys_memory_total_bytes`
+    /// * `kys_sys_memory_used_bytes`
+    /// * `kys_sys_memory_available_bytes`
+    /// * `kys_sys_swap_total_bytes`
+    /// * `kys_sys_swap_used_bytes`
+    /// * `kys_sys_swap_free_bytes`
     fn collect_memory(&mut self) -> Vec<Metric> {
         self.sys.refresh_memory();
 
@@ -240,7 +247,14 @@ impl SystemProfiler {
     ///
     /// # Returns
     ///
-    /// A vector of per-job metrics.
+    /// A vector of per-job metrics, including:
+    ///
+    /// * `kys_sys_job_cpu_usage_percent`
+    /// * `kys_sys_job_memory_used_bytes`
+    /// * `kys_sys_job_virtual_memory_bytes`
+    /// * `kys_sys_job_io_read_bytes`
+    /// * `kys_sys_job_io_write_bytes`
+    /// * `kys_sys_job_process_count`
     fn collect_job_metrics(&mut self, processes: &[HpcProcess]) -> Vec<Metric> {
         let snapshots = self.collect_job_snapshots(processes);
         let mut metrics = Vec::new();
