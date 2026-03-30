@@ -62,9 +62,17 @@ impl SystemProfiler {
         Ok(Self { sys })
     }
 
-    /// Return common labels shared by all node-level metrics.
+    /// Return common labels for node-level metrics.
     fn node_labels() -> Vec<(&'static str, String)> {
         vec![("hostname", HOSTNAME.clone())]
+    }
+
+    /// Return common labels for core-level metrics.
+    fn core_labels(core_id: usize) -> Vec<(&'static str, String)> {
+        vec![
+            ("hostname", HOSTNAME.clone()),
+            ("core", core_id.to_string()),
+        ]
     }
 
     /// Return common labels for a job-level metric.
@@ -84,17 +92,19 @@ impl SystemProfiler {
     ///
     /// * `kys_sys_cpu_usage_percent`
     /// * `kys_sys_cpu_count`
+    /// * `kys_sys_cpu_core_usage_percent`
     /// * `kys_sys_load_avg_1m`
     /// * `kys_sys_load_avg_5m`
     /// * `kys_sys_load_avg_15m`
     fn collect_cpu(&mut self) -> Vec<Metric> {
         self.sys.refresh_cpu_usage();
 
-        let total_cpu: f64 = self.sys.cpus().iter().map(|c| c.cpu_usage() as f64).sum();
-        let cpu_count = self.sys.cpus().len() as f64;
+        let cpus = self.sys.cpus();
+        let total_cpu: f64 = cpus.iter().map(|c| c.cpu_usage() as f64).sum();
+        let cpu_count = cpus.len() as f64;
         let load = System::load_average();
 
-        vec![
+        let mut metrics = vec![
             Metric {
                 name: "kys_sys_cpu_usage_percent",
                 labels: Self::node_labels(),
@@ -120,7 +130,18 @@ impl SystemProfiler {
                 labels: Self::node_labels(),
                 value: load.fifteen,
             },
-        ]
+        ];
+
+        // Per-core utilization
+        for (i, cpu) in cpus.iter().enumerate() {
+            metrics.push(Metric {
+                name: "kys_sys_cpu_core_usage_percent",
+                labels: Self::core_labels(i),
+                value: cpu.cpu_usage() as f64,
+            });
+        }
+
+        metrics
     }
 
     /// Collect physical memory and swap metrics.
