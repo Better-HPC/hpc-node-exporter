@@ -144,7 +144,7 @@ impl NvidiaProfiler {
 
             if let Ok(util) = device.utilization_rates() {
                 metrics.push(Metric {
-                    name: "gpu_utilization_percent",
+                    name: "kys_gpu_utilization_percent",
                     labels: labels.clone(),
                     value: util.gpu as f64,
                 });
@@ -152,17 +152,17 @@ impl NvidiaProfiler {
 
             if let Ok(mem) = device.memory_info() {
                 metrics.push(Metric {
-                    name: "gpu_memory_total_bytes",
+                    name: "kys_gpu_memory_total_bytes",
                     labels: labels.clone(),
                     value: mem.total as f64,
                 });
                 metrics.push(Metric {
-                    name: "gpu_memory_used_bytes",
+                    name: "kys_gpu_memory_used_bytes",
                     labels: labels.clone(),
                     value: mem.used as f64,
                 });
                 metrics.push(Metric {
-                    name: "gpu_memory_free_bytes",
+                    name: "kys_gpu_memory_free_bytes",
                     labels: labels.clone(),
                     value: mem.free as f64,
                 });
@@ -170,7 +170,7 @@ impl NvidiaProfiler {
 
             if let Ok(temp) = device.temperature(TemperatureSensor::Gpu) {
                 metrics.push(Metric {
-                    name: "gpu_temperature_celsius",
+                    name: "kys_gpu_temperature_celsius",
                     labels: labels.clone(),
                     value: temp as f64,
                 });
@@ -178,7 +178,7 @@ impl NvidiaProfiler {
 
             if let Ok(power) = device.power_usage() {
                 metrics.push(Metric {
-                    name: "gpu_power_usage_watts",
+                    name: "kys_gpu_power_usage_watts",
                     labels,
                     value: power as f64 / 1000.0,
                 });
@@ -214,7 +214,7 @@ impl NvidiaProfiler {
         // Flatten job snapshots into metrics
         for ((jobid, stepid, gpu_uuid), snap) in &snapshots {
             metrics.push(Metric {
-                name: "job_gpu_memory_used_bytes",
+                name: "kys_job_gpu_memory_used_bytes",
                 labels: Self::job_labels(jobid, stepid, gpu_uuid),
                 value: snap.memory_bytes as f64,
             });

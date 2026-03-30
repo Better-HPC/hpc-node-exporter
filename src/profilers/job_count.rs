@@ -36,7 +36,7 @@ impl Profiler for JobCountProfiler {
         let unique_jobs: HashSet<&str> = processes.iter().map(|p| p.jobid.as_str()).collect();
 
         Ok(vec![Metric {
-            name: "node_running_jobs",
+            name: "kys_running_jobs",
             labels: vec![("hostname", HOSTNAME.clone())],
             value: unique_jobs.len() as f64,
         }])

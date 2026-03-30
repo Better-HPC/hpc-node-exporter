@@ -98,7 +98,7 @@ impl SystemProfiler {
         let total_cpu: f64 = self.sys.cpus().iter().map(|c| c.cpu_usage() as f64).sum();
 
         vec![Metric {
-            name: "node_cpu_usage_percent",
+            name: "kys_sys_cpu_usage_percent",
             labels: Self::node_labels(),
             value: total_cpu,
         }]
@@ -120,17 +120,17 @@ impl SystemProfiler {
 
         vec![
             Metric {
-                name: "node_memory_total_bytes",
+                name: "kys_sys_memory_total_bytes",
                 labels: Self::node_labels(),
                 value: self.sys.total_memory() as f64,
             },
             Metric {
-                name: "node_memory_used_bytes",
+                name: "kys_sys_memory_used_bytes",
                 labels: Self::node_labels(),
                 value: self.sys.used_memory() as f64,
             },
             Metric {
-                name: "node_memory_available_bytes",
+                name: "kys_sys_memory_available_bytes",
                 labels: Self::node_labels(),
                 value: self.sys.available_memory() as f64,
             },
@@ -261,25 +261,25 @@ impl SystemProfiler {
             let labels = Self::job_labels(jobid, stepid);
 
             metrics.push(Metric {
-                name: "job_cpu_usage_percent",
+                name: "kys_sys_job_cpu_usage_percent",
                 labels: labels.clone(),
                 value: snap.cpu_usage as f64,
             });
 
             metrics.push(Metric {
-                name: "job_memory_used_bytes",
+                name: "kys_sys_job_memory_used_bytes",
                 labels: labels.clone(),
                 value: snap.memory_bytes as f64,
             });
 
             metrics.push(Metric {
-                name: "job_io_read_bytes",
+                name: "kys_sys_job_io_read_bytes",
                 labels: labels.clone(),
                 value: snap.io_read_bytes as f64,
             });
 
             metrics.push(Metric {
-                name: "job_io_write_bytes",
+                name: "kys_sys_job_io_write_bytes",
                 labels,
                 value: snap.io_written_bytes as f64,
             });
