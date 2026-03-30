@@ -1,7 +1,7 @@
-//! Scheduler-level profiler that reports the number of active HPC jobs.
+//! Default profiler that is always enabled.
 //!
-//! This profiler derives its metrics entirely from the process list
-//! provided by the HPC scheduler.
+//! Reports scheduler-level metrics derived entirely from the process
+//! list provided by the HPC scheduler.
 
 use std::collections::HashSet;
 use std::error::Error;
@@ -9,21 +9,21 @@ use std::error::Error;
 use crate::profilers::{Metric, Profiler, HOSTNAME};
 use crate::schedulers::HpcProcess;
 
-/// A [`Profiler`] that reports the count of currently running HPC jobs.
+/// A [`Profiler`] that reports baseline HPC scheduler metrics.
 ///
 /// Jobs are identified by their `jobid`; multiple processes (steps) belonging
 /// to the same job are counted once.
 #[derive(Debug, Default)]
-pub struct JobCountProfiler;
+pub struct DefaultProfiler;
 
-impl JobCountProfiler {
+impl DefaultProfiler {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Profiler for JobCountProfiler {
-    /// Count distinct job IDs and emit a single `node_running_jobs` metric.
+impl Profiler for DefaultProfiler {
+    /// Count distinct job IDs and emit a single `kys_running_jobs` metric.
     ///
     /// # Arguments
     ///
@@ -31,7 +31,7 @@ impl Profiler for JobCountProfiler {
     ///
     /// # Returns
     ///
-    /// A single-element vector containing the `node_running_jobs` metric.
+    /// A single-element vector containing the `kys_running_jobs` metric.
     fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
         let unique_jobs: HashSet<&str> = processes.iter().map(|p| p.jobid.as_str()).collect();
 

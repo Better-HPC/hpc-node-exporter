@@ -8,19 +8,21 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use log::warn;
-use nvml_wrapper::enum_wrappers::device::TemperatureSensor;
+use nvml_wrapper::enum_wrappers::device::{Clock, TemperatureSensor};
+use nvml_wrapper::enums::device::UsedGpuMemory;
 use nvml_wrapper::Nvml;
 
-use crate::profilers::{HOSTNAME, Metric, Profiler};
+use crate::profilers::{Metric, Profiler, HOSTNAME};
 use crate::schedulers::HpcProcess;
 
-/// Aggregated per-job GPU memory usage across one or more devices.
+/// Aggregated per-job GPU usage across one or more devices.
 ///
-/// Represents GPU usage summed over all active HPC process running
-/// under the same `(jobid, stepid)`.
+/// Represents GPU usage summed over all active HPC processes running
+/// under the same `(jobid, stepid)` on a single device.
 #[derive(Debug, Default)]
 struct NvidiaJobSnapshot {
     memory_bytes: u64,
+    process_count: u32,
 }
 
 /// A [`Profiler`] that collects NVIDIA GPU metrics.
@@ -38,9 +40,7 @@ impl NvidiaProfiler {
     ///
     /// Calls [`Nvml::init`] to dynamically load `libnvidia-ml.so` and
     /// resolve its function symbols, then verifies that at least one GPU
-    /// device is visible. A system with the NVIDIA driver installed but no
-    /// GPUs accessible (e.g., inside a container without device passthrough)
-    /// will fail this check.
+    /// device is visible.
     ///
     /// # Returns
     ///
@@ -83,12 +83,13 @@ impl NvidiaProfiler {
     /// Collect metrics for all GPUs and HPC jobs in a single pass.
     ///
     /// For each device, collects both node-level telemetry (utilization,
-    /// memory, temperature, power) and per-job GPU memory usage by matching
-    /// running compute process PIDs against the scheduler's process list.
+    /// memory, temperature, power, clocks, PCIe throughput, ECC errors,
+    /// fan speed, encoder/decoder utilization) and per-job GPU memory
+    /// usage by matching running compute process PIDs against the
+    /// scheduler's process list.
     ///
-    /// This avoids enumerating the device list multiple times per scrape.
     /// If a device query fails (e.g., the GPU falls off the bus mid-scrape),
-    /// a warning is printed and that device is skipped rather than failing
+    /// a warning is logged and that device is skipped rather than failing
     /// the entire collection.
     ///
     /// # Arguments
@@ -97,10 +98,7 @@ impl NvidiaProfiler {
     ///
     /// # Returns
     ///
-    /// A vector of profiling metrics including:
-    /// `gpu_utilization_percent`, `gpu_memory_total_bytes`, `gpu_memory_used_bytes`,
-    /// `gpu_memory_free_bytes`, `gpu_temperature_celsius`, `gpu_power_usage_watts`,
-    /// and `job_gpu_memory_used_bytes`.
+    /// A vector of profiling metrics.
     fn collect_all(&mut self, processes: &[HpcProcess]) -> Vec<Metric> {
         let mut metrics = Vec::new();
 
@@ -118,7 +116,7 @@ impl NvidiaProfiler {
             .map(|p| (p.pid, (p.jobid.as_str(), p.stepid.as_str())))
             .collect();
 
-        // Accumulate per-job memory across devices
+        // Accumulate per-job metrics across devices
         let mut snapshots: HashMap<(String, String, String), NvidiaJobSnapshot> = HashMap::new();
 
         for i in 0..count {
@@ -147,6 +145,11 @@ impl NvidiaProfiler {
                     name: "kys_gpu_utilization_percent",
                     labels: labels.clone(),
                     value: util.gpu as f64,
+                });
+                metrics.push(Metric {
+                    name: "kys_gpu_memory_utilization_percent",
+                    labels: labels.clone(),
+                    value: util.memory as f64,
                 });
             }
 
@@ -179,8 +182,32 @@ impl NvidiaProfiler {
             if let Ok(power) = device.power_usage() {
                 metrics.push(Metric {
                     name: "kys_gpu_power_usage_watts",
-                    labels,
+                    labels: labels.clone(),
                     value: power as f64 / 1000.0,
+                });
+            }
+
+            if let Ok(clock) = device.clock_info(Clock::Graphics) {
+                metrics.push(Metric {
+                    name: "kys_gpu_clock_graphics_mhz",
+                    labels: labels.clone(),
+                    value: clock as f64,
+                });
+            }
+
+            if let Ok(clock) = device.clock_info(Clock::Memory) {
+                metrics.push(Metric {
+                    name: "kys_gpu_clock_memory_mhz",
+                    labels: labels.clone(),
+                    value: clock as f64,
+                });
+            }
+
+            if let Ok(fan) = device.fan_speed(0) {
+                metrics.push(Metric {
+                    name: "kys_gpu_fan_speed_percent",
+                    labels: labels.clone(),
+                    value: fan as f64,
                 });
             }
 
@@ -204,19 +231,28 @@ impl NvidiaProfiler {
                     .or_default();
 
                 let mem = match proc_info.used_gpu_memory {
-                    nvml_wrapper::enums::device::UsedGpuMemory::Used(bytes) => bytes,
-                    nvml_wrapper::enums::device::UsedGpuMemory::Unavailable => 0,
+                    UsedGpuMemory::Used(bytes) => bytes,
+                    UsedGpuMemory::Unavailable => 0,
                 };
                 snap.memory_bytes += mem;
+                snap.process_count += 1;
             }
         }
 
         // Flatten job snapshots into metrics
         for ((jobid, stepid, gpu_uuid), snap) in &snapshots {
+            let labels = Self::job_labels(jobid, stepid, gpu_uuid);
+
             metrics.push(Metric {
                 name: "kys_job_gpu_memory_used_bytes",
-                labels: Self::job_labels(jobid, stepid, gpu_uuid),
+                labels: labels.clone(),
                 value: snap.memory_bytes as f64,
+            });
+
+            metrics.push(Metric {
+                name: "kys_job_gpu_process_count",
+                labels,
+                value: snap.process_count as f64,
             });
         }
 
@@ -226,9 +262,6 @@ impl NvidiaProfiler {
 
 impl Profiler for NvidiaProfiler {
     /// Collect all card and job-level metrics for NVIDIA GPUs.
-    ///
-    /// Performs a single pass over all GPU devices, collecting both
-    /// node-level and per-job metrics in one enumeration.
     ///
     /// # Arguments
     ///
@@ -241,8 +274,7 @@ impl Profiler for NvidiaProfiler {
     /// # Errors
     ///
     /// Returns an error if a fundamental NVML failure occurs. Individual
-    /// device or process query failures are logged as warnings and skipped
-    /// rather than propagated.
+    /// device or process query failures are logged as warnings and skipped.
     fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
         Ok(self.collect_all(processes))
     }

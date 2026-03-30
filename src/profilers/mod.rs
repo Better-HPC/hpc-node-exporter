@@ -2,7 +2,7 @@
 //!
 //! This module defines traits and types used by all hardware-specific profiler implementations.
 
-pub mod job_count;
+pub mod default;
 pub mod nvidia;
 pub mod system;
 
