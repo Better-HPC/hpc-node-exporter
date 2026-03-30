@@ -73,15 +73,10 @@ impl NvidiaProfiler {
             ("gpu_uuid", gpu_uuid.to_string()),
         ]
     }
+}
 
-    /// Collect metrics for all GPUs and HPC jobs in a single pass.
-    ///
-    /// For each device, collects both node-level telemetry and 
-    /// per-job GPU usage by matching running process PIDs against
-    /// the scheduler's process list.
-    ///
-    /// If a device query fails a warning is logged and the device
-    /// is skipped rather than failing the entire collection.
+impl Profiler for NvidiaProfiler {
+    /// Collect all card and job-level metrics for NVIDIA GPUs.
     ///
     /// # Arguments
     ///
@@ -90,14 +85,19 @@ impl NvidiaProfiler {
     /// # Returns
     ///
     /// A vector of profiling metrics.
-    fn collect_all(&mut self, processes: &[HpcProcess]) -> Vec<Metric> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a fundamental NVML failure occurs. Individual
+    /// device or process query failures are logged as warnings and skipped.
+    fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
         let mut metrics = Vec::new();
 
         let count = match self.nvml.device_count() {
             Ok(c) => c,
             Err(e) => {
                 warn!("failed to get GPU device count: {e}");
-                return metrics;
+                return Ok(metrics);
             }
         };
 
@@ -247,26 +247,6 @@ impl NvidiaProfiler {
             });
         }
 
-        metrics
-    }
-}
-
-impl Profiler for NvidiaProfiler {
-    /// Collect all card and job-level metrics for NVIDIA GPUs.
-    ///
-    /// # Arguments
-    ///
-    /// * `processes` - System processes to collect metrics for.
-    ///
-    /// # Returns
-    ///
-    /// A vector of profiling metrics.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a fundamental NVML failure occurs. Individual
-    /// device or process query failures are logged as warnings and skipped.
-    fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
-        Ok(self.collect_all(processes))
+        Ok(metrics)
     }
 }

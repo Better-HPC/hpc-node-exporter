@@ -62,12 +62,12 @@ impl SystemProfiler {
         Ok(Self { sys })
     }
 
-    /// Return base labels shared by all node-level metrics.
+    /// Return common labels shared by all node-level metrics.
     fn node_labels() -> Vec<(&'static str, String)> {
         vec![("hostname", HOSTNAME.clone())]
     }
 
-    /// Return base labels for a job-level metric.
+    /// Return common labels for a job-level metric.
     fn job_labels(jobid: &str, stepid: &str) -> Vec<(&'static str, String)> {
         vec![
             ("hostname", HOSTNAME.clone()),
