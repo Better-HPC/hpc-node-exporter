@@ -1,4 +1,4 @@
-//! Entry point for `keystone-exporter`.
+//! Entry point for the `hpc-node-exporter` application.
 //!
 //! Parses command-line arguments, initializes profilers and the job
 //! scheduler, starts background metrics collection, and launches the
@@ -34,7 +34,7 @@ fn init_logging(quiet: bool) -> Result<(), Box<dyn Error>> {
     let syslog_formatter = syslog::Formatter3164 {
         facility: syslog::Facility::LOG_USER,
         hostname: None,
-        process: "keystone-exporter".to_owned(),
+        process: "hpc-node-exporter".to_owned(),
         pid: 0,
     };
 
