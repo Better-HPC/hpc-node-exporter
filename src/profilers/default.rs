@@ -1,6 +1,8 @@
 //! Default profiler that is always enabled.
 //!
-//! Reports scheduler-level metrics derived entirely from the HPC scheduler.
+//! Reports scheduler-level metrics derived entirely from the HPC process
+//! list, such as the number of running jobs and the current scrape
+//! timestamp.
 
 use std::collections::HashSet;
 use std::error::Error;
@@ -17,21 +19,14 @@ use crate::schedulers::HpcProcess;
 pub struct DefaultProfiler;
 
 impl DefaultProfiler {
+    /// Creates a new `DefaultProfiler`.
     pub fn new() -> Self {
         Self
     }
 }
 
 impl Profiler for DefaultProfiler {
-    /// Count distinct job IDs and emit a single `kys_running_jobs` metric.
-    ///
-    /// # Arguments
-    ///
-    /// * `processes` - System processes to collect metrics for.
-    ///
-    /// # Returns
-    ///
-    /// A single-element vector containing the `kys_running_jobs` metric.
+    /// Returns high level status metrics.
     fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
         let epoch_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH);
         let unique_jobs: HashSet<&str> = processes.iter().map(|p| p.jobid.as_str()).collect();

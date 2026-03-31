@@ -1,7 +1,8 @@
-//! Entry point for the `keystone-exporter` binary.
+//! Entry point for `keystone-exporter`.
 //!
-//! Parses command-line arguments, initializes the requested profilers,
-//! starts background metrics collection, and launches the HTTP server.
+//! Parses command-line arguments, initializes profilers and the job
+//! scheduler, starts background metrics collection, and launches the
+//! HTTP server.
 
 mod api;
 mod cli;
@@ -23,11 +24,7 @@ use crate::profilers::Profiler;
 use crate::schedulers::slurm::SlurmScheduler;
 use crate::schedulers::HpcScheduler;
 
-/// Configure logging to syslog and optionally to stdout.
-///
-/// # Arguments
-///
-/// * `quiet` - When `true`, suppresses console log output.
+/// Configures logging to syslog and optionally to stdout.
 ///
 /// # Errors
 ///
@@ -59,36 +56,28 @@ fn init_logging(quiet: bool) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Initialize the HPC job scheduler.
-///
-/// # Returns
-///
-/// A boxed [`HpcScheduler`] implementation used to discover active jobs.
+/// Initializes the HPC job scheduler.
 fn init_hpc_scheduler() -> Box<dyn HpcScheduler + Send> {
     Box::new(SlurmScheduler::default())
 }
 
-/// Initialize hardware profilers.
+/// Initializes hardware profilers based on the requested flags.
 ///
-/// Initialize and return a vector of user specified hardware
-/// profilers. A [`DefaultProfiler`] is included unconditionally.
-///
-/// # Arguments
-///
-/// * `system` - Whether to enable the system CPU/memory profiler.
-/// * `nvidia` - Whether to enable the NVIDIA GPU profiler.
+/// A [`DefaultProfiler`] is always included. Additional profilers are
+/// added when the corresponding flag is `true`.
 ///
 /// # Errors
 ///
-/// Returns an error if a requested hardware profiler fails to initialize.
+/// Returns an error if a requested profiler fails to initialize.
 fn init_profilers(
     system: bool,
     nvidia: bool,
 ) -> Result<Vec<Box<dyn Profiler + Send>>, Box<dyn Error>> {
     let mut profilers: Vec<Box<dyn Profiler + Send>> = Vec::new();
 
-    // Default profiler is always enabled
-    profilers.push(Box::new(DefaultProfiler::new()));
+    // The default profiler is always enabled
+    let default_profiler = DefaultProfiler::new();
+    profilers.push(Box::new(default_profiler));
 
     if system {
         profilers.push(Box::new(SystemProfiler::new()?));
@@ -101,9 +90,9 @@ fn init_profilers(
     Ok(profilers)
 }
 
-/// Parse arguments, start the collector thread, and run the HTTP server.
+/// Parses arguments, starts the collector thread, and runs the HTTP server.
 ///
-/// The process exits with status 1 if the HTTP server fails to start.
+/// Exits with status 1 on fatal initialization or server errors.
 #[tokio::main]
 async fn main() {
     let args = Args::parse();

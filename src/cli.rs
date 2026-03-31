@@ -1,8 +1,8 @@
-//! Argument parsing for the package's command-line interface.
+//! Command-line argument parsing.
 
 use clap::Parser;
 
-/// Parsed command-line arguments.
+/// Parsed command-line arguments for `keystone-exporter`.
 #[derive(Parser, Debug)]
 #[command(
     name = "keystone-exporter",
@@ -36,7 +36,7 @@ pub struct Args {
 }
 
 impl Args {
-    /// Parse command-line arguments and return them as an [`Args`] instance.
+    /// Parses command-line arguments.
     pub fn parse() -> Self {
         Parser::parse()
     }

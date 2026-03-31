@@ -1,7 +1,9 @@
-//! Profiler trait and shared metric types.
+//! Traits and types for hardware-specific profilers.
 //!
-//! This module defines common traits and types for implementing
-//! hardware-specific profilers.
+//! Defines a common interface for collecting telemetry across heterogeneous
+//! hardware backends. Each [`Profiler`] translates device- or system-specific
+//! measurements into a uniform set of [`Metric`] values exportable in
+//! Prometheus format.
 
 pub mod default;
 pub mod nvidia;
@@ -12,14 +14,13 @@ use std::sync::LazyLock;
 
 use crate::schedulers::HpcProcess;
 
-/// The local hostname, resolved once on first access.
+/// The local hostname, resolved once at startup.
 pub static HOSTNAME: LazyLock<String> =
     LazyLock::new(|| gethostname::gethostname().to_string_lossy().into_owned());
 
-/// A single node telemetry measurement.
+/// A single telemetry measurement in Prometheus line format.
 ///
-/// Each `Metric` carries a metric name, a set of key-value labels, and the
-/// observed numeric value.
+/// Carries a metric name, key-value labels, and an observed numeric value.
 #[derive(Debug)]
 pub struct Metric {
     pub name: &'static str,
@@ -28,17 +29,18 @@ pub struct Metric {
 }
 
 impl Metric {
-    /// Escape Prometheus label text.
+    /// Escapes a label value for Prometheus text exposition.
     ///
-    /// Prometheus requires label values to be enclosed in double quotes.
-    /// and for backslashes, double quotes, and newlines to be escaped.
-    fn escape_label_value(v: &str) -> String {
-        v.replace('\\', "\\\\")
+    /// Backslashes, double quotes, and newlines are escaped per the
+    /// Prometheus specification.
+    fn escape_label_value(label: &str) -> String {
+        label
+            .replace('\\', "\\\\")
             .replace('"', "\\\"")
             .replace('\n', "\\n")
     }
 
-    /// Return the metric in Prometheus line format.
+    /// Renders the metric as a Prometheus text exposition line.
     pub fn to_prometheus(&self) -> String {
         // Render individual label/value pairs as strings
         let mut parts = Vec::with_capacity(self.labels.len());
@@ -56,18 +58,15 @@ impl Metric {
     }
 }
 
-/// Trait for collecting hardware telemetry metrics.
+/// A collector of hardware telemetry metrics.
 ///
 /// Implementors are responsible for gathering metrics from a specific
 /// hardware domain and scope (e.g., CPU metrics, GPU card metrics).
 pub trait Profiler {
-    /// Collect metrics and return them as a vector of [`Metric`] values.
+    /// Collects current metrics for the given HPC `processes`.
     ///
-    /// Takes `&mut self` to allow profilers to maintain state between
-    /// collections (e.g., for computing deltas between scrapes).
+    /// # Errors
     ///
-    /// # Arguments
-    ///
-    /// * `processes` - The active HPC processes running on the host machine.
+    /// Returns an error if the underlying hardware interface fails irrecoverably.
     fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>>;
 }

@@ -1,7 +1,7 @@
 //! Combined node-level and job-level system profiler.
 //!
-//! This module provides [`SystemProfiler`], which uses the [`sysinfo`] crate
-//! to collect telemetry for CPU, memory, swap, and per-job resource utilization.
+//! Uses [`sysinfo`] to collect CPU, memory, swap, and per-job resource
+//! utilization metrics.
 
 use std::collections::HashMap;
 use std::error::Error;
@@ -12,10 +12,7 @@ use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use crate::profilers::{Metric, Profiler, HOSTNAME};
 use crate::schedulers::HpcProcess;
 
-/// Aggregated resource usage for a single job step.
-///
-/// Represents system usage summed over all active HPC processes running
-/// under the same `(jobid, stepid)`.
+/// Aggregated per-job system usage across one or more processes.
 #[derive(Debug, Default)]
 struct SystemJobSnapshot {
     cpu_usage: f32,
@@ -26,31 +23,18 @@ struct SystemJobSnapshot {
     process_count: u32,
 }
 
-/// A [`Profiler`] that collects node and job-level system metrics.
-///
-/// Internally wraps a persistent [`sysinfo::System`] instance for CPU, memory,
-/// and process queries. The instance is long-lived so that `sysinfo` can
-/// compute meaningful deltas between consecutive scrapes.
+/// A [`Profiler`] for common system metrics (CPU, memory, swap, per-job I/O).
 #[derive(Debug)]
 pub struct SystemProfiler {
     sys: System,
 }
 
 impl SystemProfiler {
-    /// Create a new profiler with a pre-warmed CPU baseline.
-    ///
-    /// System info is generally reported as a delta between successive
-    /// measurements. This constructor performs an initial measurement
-    /// so successive calls return a meaningful value.
-    ///
-    /// # Returns
-    ///
-    /// A new [`SystemProfiler`] instance.
+    /// Initialize hardware measurement and return a new profiler.
     ///
     /// # Errors
     ///
-    /// Returns an error if the host operating system is not supported by
-    /// the `sysinfo` crate.
+    /// Returns an error if the host OS is not supported by `sysinfo`.
     pub fn new() -> Result<Self, Box<dyn Error>> {
         if !sysinfo::IS_SUPPORTED_SYSTEM {
             return Err("SystemProfiler: OS not supported by sysinfo".into());
@@ -62,12 +46,12 @@ impl SystemProfiler {
         Ok(Self { sys })
     }
 
-    /// Return common labels for node-level metrics.
+    /// Returns common labels for node-level metrics.
     fn node_labels() -> Vec<(&'static str, String)> {
         vec![("hostname", HOSTNAME.clone())]
     }
 
-    /// Return common labels for core-level metrics.
+    /// Returns common labels for per-core metrics.
     fn core_labels(core_id: usize) -> Vec<(&'static str, String)> {
         vec![
             ("hostname", HOSTNAME.clone()),
@@ -75,7 +59,7 @@ impl SystemProfiler {
         ]
     }
 
-    /// Return common labels for a job-level metric.
+    /// Returns common labels for job-level metrics.
     fn job_labels(jobid: &str, stepid: &str) -> Vec<(&'static str, String)> {
         vec![
             ("hostname", HOSTNAME.clone()),
@@ -84,18 +68,7 @@ impl SystemProfiler {
         ]
     }
 
-    /// Collect CPU metrics across all cores.
-    ///
-    /// # Returns
-    ///
-    /// A vector of node-level CPU metrics:
-    ///
-    /// * `kys_sys_cpu_usage_percent`
-    /// * `kys_sys_cpu_count`
-    /// * `kys_sys_cpu_core_usage_percent`
-    /// * `kys_sys_load_avg_1m`
-    /// * `kys_sys_load_avg_5m`
-    /// * `kys_sys_load_avg_15m`
+    /// Collects CPU metrics across all cores.
     fn collect_cpu(&mut self) -> Vec<Metric> {
         self.sys.refresh_cpu_usage();
 
@@ -144,18 +117,7 @@ impl SystemProfiler {
         metrics
     }
 
-    /// Collect physical memory and swap metrics.
-    ///
-    /// # Returns
-    ///
-    /// A vector of node-level memory and swap metrics:
-    ///
-    /// * `kys_sys_memory_total_bytes`
-    /// * `kys_sys_memory_used_bytes`
-    /// * `kys_sys_memory_available_bytes`
-    /// * `kys_sys_swap_total_bytes`
-    /// * `kys_sys_swap_used_bytes`
-    /// * `kys_sys_swap_free_bytes`
+    /// Returns physical memory and swap metrics.
     fn collect_memory(&mut self) -> Vec<Metric> {
         self.sys.refresh_memory();
 
@@ -193,26 +155,12 @@ impl SystemProfiler {
         ]
     }
 
-    /// Build per-job resource snapshots by aggregating current process data.
+    /// Builds per-job resource snapshots by aggregating process data.
     ///
-    /// For each [`HpcProcess`] in the input slice, this method:
-    ///
-    /// 1. Converts the PID to a [`sysinfo::Pid`] and asks `sysinfo` to
-    ///    refresh CPU, memory, and disk-usage fields for that set of
-    ///    processes (avoiding a full process-table scan).
-    /// 2. Looks the process up in the refreshed table. If the PID is no
-    ///    longer running (e.g., it exited between the scheduler query and
-    ///    now), a warning is printed and the process is skipped.
-    /// 3. Accumulates the process's stats into the [`SystemJobSnapshot`]
-    ///    keyed by `(jobid, stepid)`.
-    ///
-    /// # Arguments
-    ///
-    /// * `processes` - Active system processes to collect metrics for.
-    ///
-    /// # Returns
-    ///
-    /// A map from `(jobid, stepid)` to the aggregated [`SystemJobSnapshot`].
+    /// For each process in `processes`, refreshes its CPU, memory, and disk
+    /// usage via `sysinfo` and accumulates the results into snapshots keyed
+    /// by `(jobid, stepid)`. Processes that have exited since the scheduler
+    /// query are logged and skipped.
     fn collect_job_snapshots(
         &mut self,
         processes: &[HpcProcess],
@@ -234,7 +182,10 @@ impl SystemProfiler {
         for proc in processes {
             let pid = Pid::from(proc.pid as usize);
             let Some(info) = self.sys.process(pid) else {
-                warn!("pid {} not found (job {}, step {})", proc.pid, proc.jobid, proc.stepid);
+                warn!(
+                    "pid {} not found (job {}, step {})",
+                    proc.pid, proc.jobid, proc.stepid
+                );
                 continue;
             };
 
@@ -256,26 +207,10 @@ impl SystemProfiler {
         jobs
     }
 
-    /// Collect per-job resource usage metrics.
+    /// Returns per-job resource usage metrics.
     ///
     /// Delegates to [`collect_job_snapshots`](Self::collect_job_snapshots)
-    /// to build per-job usage data, then flattens each snapshot into
-    /// metrics labeled with the originating `jobid` and `stepid`.
-    ///
-    /// # Arguments
-    ///
-    /// * `processes` - Active system processes to collect metrics for.
-    ///
-    /// # Returns
-    ///
-    /// A vector of per-job metrics, including:
-    ///
-    /// * `kys_sys_job_cpu_usage_percent`
-    /// * `kys_sys_job_memory_used_bytes`
-    /// * `kys_sys_job_virtual_memory_bytes`
-    /// * `kys_sys_job_io_read_bytes`
-    /// * `kys_sys_job_io_write_bytes`
-    /// * `kys_sys_job_process_count`
+    /// and flattens each snapshot into labeled metrics.
     fn collect_job_metrics(&mut self, processes: &[HpcProcess]) -> Vec<Metric> {
         let snapshots = self.collect_job_snapshots(processes);
         let mut metrics = Vec::new();
@@ -325,21 +260,10 @@ impl SystemProfiler {
 }
 
 impl Profiler for SystemProfiler {
-    /// Collect all node and job-level system metrics.
+    /// Measures and returns all system usage metrics.
     ///
-    /// # Arguments
-    ///
-    /// * `processes` - System processes to collect metrics for.
-    ///
-    /// # Returns
-    ///
-    /// A vector of profiling metrics.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if a fundamental `sysinfo` failure occurs.
-    /// Individual process query failures are logged as warnings and
-    /// skipped rather than propagated.
+    /// Individual process query failures are logged and skipped rather
+    /// than propagated.
     fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
         let mut metrics = Vec::new();
         metrics.extend(self.collect_cpu());

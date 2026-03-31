@@ -1,8 +1,10 @@
+//! Traits for abstracting HPC job schedulers.
+
 pub mod slurm;
 
 use std::error::Error;
 
-/// A system process being run by an HPC scheduler.
+/// A system process managed by an HPC scheduler.
 #[derive(Debug)]
 pub struct HpcProcess {
     pub jobid: String,
@@ -10,7 +12,12 @@ pub struct HpcProcess {
     pub pid: u32,
 }
 
+/// Discovers active processes from an HPC job scheduler.
 pub trait HpcScheduler {
-    /// Discover active system processes from the HPC scheduler.
+    /// Returns the currently active HPC processes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the scheduler cannot be queried.
     fn get_processes(&self) -> Result<Vec<HpcProcess>, Box<dyn Error>>;
 }

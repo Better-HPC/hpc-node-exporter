@@ -1,9 +1,8 @@
 //! HTTP API server for Prometheus metric scraping.
 //!
 //! Exposes a `/metrics` endpoint that returns pre-collected telemetry in
-//! Prometheus text exposition format. Metrics are collected on a background
-//! thread (see [`crate::collector`]) and published via an [`ArcSwap`] snapshot
-//! that handlers read with zero contention.
+//! Prometheus text exposition format. Metrics are published via an
+//! [`ArcSwap`] snapshot that handlers read with zero contention.
 
 use std::sync::Arc;
 
@@ -15,29 +14,17 @@ use axum::Router;
 use log::info;
 use tokio::net::TcpListener;
 
-/// GET handler returning an empty 200 OK response.
+/// Returns an empty `200 OK` for health checks.
 async fn status_handler() -> StatusCode {
     StatusCode::OK
 }
 
-/// GET handler returning the latest metrics snapshot.
-///
-/// # Returns
-///
-/// The latest Prometheus-format metrics string.
+/// Returns the latest Prometheus-format metrics snapshot.
 async fn metrics_handler(State(snapshot): State<&'static ArcSwap<String>>) -> String {
     snapshot.load().as_ref().clone()
 }
 
-/// Build the Axum router with shared application state.
-///
-/// # Arguments
-///
-/// * `snapshot` - A `'static` reference to the shared [`ArcSwap<String>`].
-///
-/// # Returns
-///
-/// A configured [`Router`] with the `/` and `/metrics` routes registered.
+/// Builds the Axum router with shared application state.
 fn build_router(snapshot: &'static ArcSwap<String>) -> Router {
     Router::new()
         .route("/", get(status_handler))
@@ -46,17 +33,10 @@ fn build_router(snapshot: &'static ArcSwap<String>) -> Router {
         .with_state(snapshot)
 }
 
-/// Start the HTTP server on the given host and port.
+/// Starts the HTTP server on the given `host` and `port`.
 ///
-/// The server reads rendered Prometheus metrics from a
-/// shared [`ArcSwap<String>`] that is populated by a
-/// background collector thread.
-///
-/// # Arguments
-///
-/// * `host` - The network interface to bind to (e.g., `"127.0.0.1"`).
-/// * `port` - The TCP port to listen on.
-/// * `snapshot` - The shared snapshot that the collector thread writes to.
+/// Reads rendered Prometheus metrics from `snapshot`, which is populated
+/// by the background collector thread.
 ///
 /// # Errors
 ///

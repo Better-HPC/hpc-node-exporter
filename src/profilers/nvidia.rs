@@ -1,7 +1,7 @@
 //! Hardware profiler for NVIDIA GPUs.
 //!
-//! This module provides [`NvidiaProfiler`], which uses the [`nvml_wrapper`]
-//! crate to collect telemetry for Nvidia GPU utilization.
+//! Uses [`nvml_wrapper`] to collect per-card and per-job GPU telemetry
+//! including utilization, memory, temperature, power, clocks, and fan speed.
 
 use std::collections::HashMap;
 use std::error::Error;
@@ -15,9 +15,6 @@ use crate::profilers::{Metric, Profiler, HOSTNAME};
 use crate::schedulers::HpcProcess;
 
 /// Aggregated per-job GPU usage across one or more devices.
-///
-/// Represents GPU usage summed over all active HPC processes running
-/// under the same `(jobid, stepid)` on a single device.
 #[derive(Debug, Default)]
 struct NvidiaJobSnapshot {
     memory_bytes: u64,
@@ -25,27 +22,21 @@ struct NvidiaJobSnapshot {
 }
 
 /// A [`Profiler`] for NVIDIA GPU metrics.
-///
-/// Holds a long-lived [`Nvml`] handle that is initialized once at
-/// construction time.
 #[derive(Debug)]
 pub struct NvidiaProfiler {
     nvml: Nvml,
 }
 
 impl NvidiaProfiler {
-    /// Initialize the NVML library and return a new profiler instance.
-    ///
-    /// # Returns
-    ///
-    /// A new [`NvidiaProfiler`] instance.
+    /// Initializes the NVML library and returns a new profiler.
     ///
     /// # Errors
     ///
-    /// Returns an error if the NVIDIA driver is not installed, the NVML
-    /// shared library cannot be found, the library fails to initialize,
-    /// or no GPU devices are detected.
+    /// Returns an error if the NVIDIA driver or NVML shared library is
+    /// unavailable, initialization fails, or no GPU devices are detected.
     pub fn new() -> Result<Self, Box<dyn Error>> {
+        // Use a long-lived `Nvml` handle to ensure consistent deltas
+        // between successive measurements.
         let nvml = Nvml::init()?;
 
         let count = nvml.device_count()?;
@@ -56,7 +47,7 @@ impl NvidiaProfiler {
         Ok(Self { nvml })
     }
 
-    /// Return common labels for a node-level GPU metric.
+    /// Returns common labels for card-level metrics.
     fn gpu_labels(gpu_uuid: &str) -> Vec<(&'static str, String)> {
         vec![
             ("hostname", HOSTNAME.clone()),
@@ -64,7 +55,7 @@ impl NvidiaProfiler {
         ]
     }
 
-    /// Return common labels for a job-level GPU metric.
+    /// Returns common labels for job-level metrics.
     fn job_labels(jobid: &str, stepid: &str, gpu_uuid: &str) -> Vec<(&'static str, String)> {
         vec![
             ("hostname", HOSTNAME.clone()),
@@ -76,20 +67,10 @@ impl NvidiaProfiler {
 }
 
 impl Profiler for NvidiaProfiler {
-    /// Collect all card and job-level metrics for NVIDIA GPUs.
+    /// Measures and returns all GPU usage metrics.
     ///
-    /// # Arguments
-    ///
-    /// * `processes` - System processes to collect metrics for.
-    ///
-    /// # Returns
-    ///
-    /// A vector of profiling metrics.
-    ///
-    /// # Errors
-    ///
-    /// Errors only if a fundamental NVML failure occurs. Individual device
-    /// or process query failures are logged as warnings and skipped.
+    /// Individual device or process query failures are logged as warnings
+    /// and skipped; an error is returned only on a fundamental NVML failure.
     fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
         let mut metrics = Vec::new();
 
@@ -101,13 +82,13 @@ impl Profiler for NvidiaProfiler {
             }
         };
 
-        // Build a PID → (jobid, stepid) lookup for O(1) matching
+        // Build a PID → (jobid, stepid) lookup for O(1) matching.
         let pid_to_job: HashMap<u32, (&str, &str)> = processes
             .iter()
             .map(|p| (p.pid, (p.jobid.as_str(), p.stepid.as_str())))
             .collect();
 
-        // Accumulate per-job metrics across devices
+        // Accumulate per-job metrics across devices.
         let mut snapshots: HashMap<(String, String, String), NvidiaJobSnapshot> = HashMap::new();
 
         for i in 0..count {
@@ -230,7 +211,7 @@ impl Profiler for NvidiaProfiler {
             }
         }
 
-        // Flatten job snapshots into metrics
+        // Flatten job snapshots into metrics.
         for ((jobid, stepid, gpu_uuid), snap) in &snapshots {
             let labels = Self::job_labels(jobid, stepid, gpu_uuid);
 

@@ -1,8 +1,8 @@
 //! Background metric collection.
 //!
-//! Metrics collection is executed in a background thread, rendered
-//! into Prometheus format, and published to an [`ArcSwap`] for
-//! consumption by the rest of the application.
+//! Metrics are collected in a background thread, rendered into Prometheus
+//! text exposition format, and published to an [`ArcSwap`] for lock-free
+//! reads by other application layers.
 
 use std::sync::Arc;
 use std::thread;
@@ -14,18 +14,11 @@ use log::{error, warn};
 use crate::profilers::Profiler;
 use crate::schedulers::HpcScheduler;
 
-/// Spawn the background collector thread.
+/// Spawns the background collector thread.
 ///
 /// The thread takes exclusive ownership of the profilers and scheduler,
 /// collecting metrics in a loop and publishing the rendered output to
-/// a shared `snapshot`. The thread runs for the lifetime of the process.
-///
-/// # Arguments
-///
-/// * `profilers` - The enabled profiler instances.
-/// * `scheduler` - The HPC scheduler used to discover active jobs.
-/// * `snapshot` - The shared snapshot that HTTP handlers read from.
-/// * `interval` - How often to collect and publish metrics.
+/// `snapshot`.
 pub fn spawn(
     mut profilers: Vec<Box<dyn Profiler + Send>>,
     scheduler: Box<dyn HpcScheduler + Send>,
@@ -39,22 +32,10 @@ pub fn spawn(
     });
 }
 
-/// Run a single collection pass across all profilers.
+/// Runs a single collection pass across all profilers.
 ///
-/// Collects hardware metrics from each profiler and renders them
-/// into a single Prometheus-format string. Failures at any stage
-/// are logged and skipped rather than propagated, ensuring partial
-/// metrics are still reported if a single profiler fails.
-///
-/// # Arguments
-///
-/// * `profilers` - The profiler instances to collect from.
-/// * `scheduler` - The HPC scheduler used to discover active job PIDs.
-///
-/// # Returns
-///
-/// A Prometheus text exposition format string containing the rendered
-/// metrics from all profilers.
+/// Failures at any stage are logged and skipped rather than propagated,
+/// so partial metrics are still reported when a single profiler fails.
 fn collect(profilers: &mut [Box<dyn Profiler + Send>], scheduler: &dyn HpcScheduler) -> String {
     let processes = scheduler.get_processes().unwrap_or_else(|e| {
         warn!("failed to fetch job pids: {e}");
