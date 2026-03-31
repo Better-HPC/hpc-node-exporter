@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::cli::Args;
-use crate::profilers::job_count::JobCountProfiler;
+use crate::profilers::default::DefaultProfiler;
 use crate::profilers::nvidia::NvidiaProfiler;
 use crate::profilers::system::SystemProfiler;
 use crate::profilers::Profiler;
@@ -71,7 +71,7 @@ fn init_hpc_scheduler() -> Box<dyn HpcScheduler + Send> {
 /// Initialize hardware profilers.
 ///
 /// Initialize and return a vector of user specified hardware
-/// profilers. A [`JobCountProfiler`] is included by default.
+/// profilers. A [`DefaultProfiler`] is included unconditionally.
 ///
 /// # Arguments
 ///
@@ -87,8 +87,8 @@ fn init_profilers(
 ) -> Result<Vec<Box<dyn Profiler + Send>>, Box<dyn Error>> {
     let mut profilers: Vec<Box<dyn Profiler + Send>> = Vec::new();
 
-    // Always enabled — reports the number of running HPC jobs
-    profilers.push(Box::new(JobCountProfiler::new()));
+    // Default profiler is always enabled
+    profilers.push(Box::new(DefaultProfiler::new()));
 
     if system {
         profilers.push(Box::new(SystemProfiler::new()?));

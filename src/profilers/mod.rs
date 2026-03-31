@@ -1,8 +1,9 @@
 //! Profiler trait and shared metric types.
 //!
-//! This module defines traits and types used by all hardware-specific profiler implementations.
+//! This module defines common traits and types for implementing
+//! hardware-specific profilers.
 
-pub mod job_count;
+pub mod default;
 pub mod nvidia;
 pub mod system;
 
@@ -17,8 +18,8 @@ pub static HOSTNAME: LazyLock<String> =
 
 /// A single node telemetry measurement.
 ///
-/// Each `Metric` carries a metric name, a set of key-value labels, and the observed numeric value.
-/// All labels (including hostname) must be specified explicitly by the caller.
+/// Each `Metric` carries a metric name, a set of key-value labels, and the
+/// observed numeric value.
 #[derive(Debug)]
 pub struct Metric {
     pub name: &'static str,
@@ -29,7 +30,7 @@ pub struct Metric {
 impl Metric {
     /// Escape Prometheus label text.
     ///
-    /// Prometheus requires label values to be enclosed in double quotes
+    /// Prometheus requires label values to be enclosed in double quotes.
     /// and for backslashes, double quotes, and newlines to be escaped.
     fn escape_label_value(v: &str) -> String {
         v.replace('\\', "\\\\")
@@ -58,7 +59,7 @@ impl Metric {
 /// Trait for collecting hardware telemetry metrics.
 ///
 /// Implementors are responsible for gathering metrics from a specific
-/// hardware domain and scope (e.g., CPU/memory system metrics, GPU card metrics).
+/// hardware domain and scope (e.g., CPU metrics, GPU card metrics).
 pub trait Profiler {
     /// Collect metrics and return them as a vector of [`Metric`] values.
     ///

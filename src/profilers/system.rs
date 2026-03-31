@@ -1,52 +1,47 @@
 //! Combined node-level and job-level system profiler.
 //!
-//! This module provides [`SystemProfiler`], which uses the [`sysinfo`] crate to
-//! collect telemetry for CPU, memory, and network utilization.
+//! This module provides [`SystemProfiler`], which uses the [`sysinfo`] crate
+//! to collect telemetry for CPU, memory, swap, and per-job resource utilization.
 
 use std::collections::HashMap;
 use std::error::Error;
 
 use log::warn;
-use sysinfo::{Networks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
-use crate::profilers::{HOSTNAME, Metric, Profiler};
+use crate::profilers::{Metric, Profiler, HOSTNAME};
 use crate::schedulers::HpcProcess;
 
 /// Aggregated resource usage for a single job step.
 ///
-/// Represents system usage summed over all active HPC process running
+/// Represents system usage summed over all active HPC processes running
 /// under the same `(jobid, stepid)`.
 #[derive(Debug, Default)]
 struct SystemJobSnapshot {
     cpu_usage: f32,
     memory_bytes: u64,
+    virtual_memory_bytes: u64,
     io_read_bytes: u64,
     io_written_bytes: u64,
+    process_count: u32,
 }
 
 /// A [`Profiler`] that collects node and job-level system metrics.
 ///
-/// Internally wraps a persistent [`sysinfo::System`] instance (for CPU, memory,
-/// and process queries) and a [`sysinfo::Networks`] instance (for network I/O).
-/// Both are long-lived so that `sysinfo` can compute meaningful deltas between
-/// consecutive scrapes.
+/// Internally wraps a persistent [`sysinfo::System`] instance for CPU, memory,
+/// and process queries. The instance is long-lived so that `sysinfo` can
+/// compute meaningful deltas between consecutive scrapes.
 #[derive(Debug)]
 pub struct SystemProfiler {
     sys: System,
-    networks: Networks,
 }
 
 impl SystemProfiler {
-    /// Create a new profiler with pre-warmed CPU and network baselines.
+    /// Create a new profiler with a pre-warmed CPU baseline.
     ///
-    /// The `sysinfo` crate reports CPU usage as a delta between successive
-    /// [`System::refresh_cpu_usage`] calls. This constructor performs the
-    /// first refresh so successive calls return a real value instead of a
-    /// meaningless zero placeholder.
-    ///
-    /// Similarly, [`Networks::new_with_refreshed_list`] snapshots the
-    /// current set of network interfaces so later refreshes can track
-    /// per-interval byte counters.
+    /// System info is generally reported as a delta between successive
+    /// measurements. This constructor performs an initial measurement
+    /// so successive calls return a meaningful value.
     ///
     /// # Returns
     ///
@@ -61,20 +56,26 @@ impl SystemProfiler {
             return Err("SystemProfiler: OS not supported by sysinfo".into());
         }
 
-        // Perform a baseline measurement for system CPU/network metrics
-        let networks = Networks::new_with_refreshed_list();
         let mut sys = System::new();
         sys.refresh_cpu_usage();
 
-        Ok(Self { sys, networks })
+        Ok(Self { sys })
     }
 
-    /// Return base labels shared by all node-level metrics.
+    /// Return common labels for node-level metrics.
     fn node_labels() -> Vec<(&'static str, String)> {
         vec![("hostname", HOSTNAME.clone())]
     }
 
-    /// Return base labels for a job-level metric.
+    /// Return common labels for core-level metrics.
+    fn core_labels(core_id: usize) -> Vec<(&'static str, String)> {
+        vec![
+            ("hostname", HOSTNAME.clone()),
+            ("core", core_id.to_string()),
+        ]
+    }
+
+    /// Return common labels for a job-level metric.
     fn job_labels(jobid: &str, stepid: &str) -> Vec<(&'static str, String)> {
         vec![
             ("hostname", HOSTNAME.clone()),
@@ -83,38 +84,78 @@ impl SystemProfiler {
         ]
     }
 
-    /// Collect CPU metrics summed across all cores.
-    ///
-    /// Calls [`System::refresh_cpu_usage`] to capture a new sample, then
-    /// sums the per-core values from [`System::cpus`]. 100% utilization
-    /// represents full utilization of one core, so a 4-core machine at
-    /// full load reports 400%.
+    /// Collect CPU metrics across all cores.
     ///
     /// # Returns
     ///
-    /// A vector of profiling metrics including: `node_cpu_usage_percent`.
+    /// A vector of node-level CPU metrics:
+    ///
+    /// * `kys_sys_cpu_usage_percent`
+    /// * `kys_sys_cpu_count`
+    /// * `kys_sys_cpu_core_usage_percent`
+    /// * `kys_sys_load_avg_1m`
+    /// * `kys_sys_load_avg_5m`
+    /// * `kys_sys_load_avg_15m`
     fn collect_cpu(&mut self) -> Vec<Metric> {
         self.sys.refresh_cpu_usage();
-        let total_cpu: f64 = self.sys.cpus().iter().map(|c| c.cpu_usage() as f64).sum();
 
-        vec![Metric {
-            name: "kys_sys_cpu_usage_percent",
-            labels: Self::node_labels(),
-            value: total_cpu,
-        }]
+        let cpus = self.sys.cpus();
+        let total_cpu: f64 = cpus.iter().map(|c| c.cpu_usage() as f64).sum();
+        let cpu_count = cpus.len() as f64;
+        let load = System::load_average();
+
+        let mut metrics = vec![
+            Metric {
+                name: "kys_sys_cpu_usage_percent",
+                labels: Self::node_labels(),
+                value: total_cpu,
+            },
+            Metric {
+                name: "kys_sys_cpu_count",
+                labels: Self::node_labels(),
+                value: cpu_count,
+            },
+            Metric {
+                name: "kys_sys_load_avg_1m",
+                labels: Self::node_labels(),
+                value: load.one,
+            },
+            Metric {
+                name: "kys_sys_load_avg_5m",
+                labels: Self::node_labels(),
+                value: load.five,
+            },
+            Metric {
+                name: "kys_sys_load_avg_15m",
+                labels: Self::node_labels(),
+                value: load.fifteen,
+            },
+        ];
+
+        // Per-core utilization
+        for (i, cpu) in cpus.iter().enumerate() {
+            metrics.push(Metric {
+                name: "kys_sys_cpu_core_usage_percent",
+                labels: Self::core_labels(i),
+                value: cpu.cpu_usage() as f64,
+            });
+        }
+
+        metrics
     }
 
-    /// Collect physical memory metrics.
-    ///
-    /// Returns three metrics representing total installed memory, memory
-    /// currently in use, and memory available for new allocations. Values
-    /// come from [`System::refresh_memory`] and reflect the kernel's view
-    /// at the time of the call.
+    /// Collect physical memory and swap metrics.
     ///
     /// # Returns
     ///
-    /// A vector of profiling metrics including:
-    /// `node_memory_total_bytes`, `node_memory_used_bytes`, and `node_memory_available_bytes`.
+    /// A vector of node-level memory and swap metrics:
+    ///
+    /// * `kys_sys_memory_total_bytes`
+    /// * `kys_sys_memory_used_bytes`
+    /// * `kys_sys_memory_available_bytes`
+    /// * `kys_sys_swap_total_bytes`
+    /// * `kys_sys_swap_used_bytes`
+    /// * `kys_sys_swap_free_bytes`
     fn collect_memory(&mut self) -> Vec<Metric> {
         self.sys.refresh_memory();
 
@@ -134,45 +175,20 @@ impl SystemProfiler {
                 labels: Self::node_labels(),
                 value: self.sys.available_memory() as f64,
             },
-        ]
-    }
-
-    /// Collect network throughput metrics.
-    ///
-    /// Iterates over all known network interfaces, skipping the loopback
-    /// device (`lo`), and sums received and transmitted bytes into two
-    /// aggregate counters. The values represent bytes transferred since the
-    /// previous call to [`Networks::refresh`], making them suitable for
-    /// rate calculations in Prometheus (e.g., `rate(node_net_rx_bytes[5m])`).
-    ///
-    /// # Returns
-    ///
-    /// A vector of profiling metrics including:
-    /// `node_net_rx_bytes` and `node_net_tx_bytes`.
-    fn collect_network(&mut self) -> Vec<Metric> {
-        self.networks.refresh(false);
-
-        let mut total_rx: u64 = 0;
-        let mut total_tx: u64 = 0;
-
-        for (iface, data) in &self.networks {
-            if iface == "lo" {
-                continue;
-            }
-            total_rx += data.received();
-            total_tx += data.transmitted();
-        }
-
-        vec![
             Metric {
-                name: "node_net_rx_bytes",
+                name: "kys_sys_swap_total_bytes",
                 labels: Self::node_labels(),
-                value: total_rx as f64,
+                value: self.sys.total_swap() as f64,
             },
             Metric {
-                name: "node_net_tx_bytes",
+                name: "kys_sys_swap_used_bytes",
                 labels: Self::node_labels(),
-                value: total_tx as f64,
+                value: self.sys.used_swap() as f64,
+            },
+            Metric {
+                name: "kys_sys_swap_free_bytes",
+                labels: Self::node_labels(),
+                value: self.sys.free_swap() as f64,
             },
         ]
     }
@@ -182,8 +198,8 @@ impl SystemProfiler {
     /// For each [`HpcProcess`] in the input slice, this method:
     ///
     /// 1. Converts the PID to a [`sysinfo::Pid`] and asks `sysinfo` to
-    ///    refresh only the CPU, memory, and disk-usage fields for that set
-    ///    of processes (avoiding a full process-table scan).
+    ///    refresh CPU, memory, and disk-usage fields for that set of
+    ///    processes (avoiding a full process-table scan).
     /// 2. Looks the process up in the refreshed table. If the PID is no
     ///    longer running (e.g., it exited between the scheduler query and
     ///    now), a warning is printed and the process is skipped.
@@ -196,7 +212,7 @@ impl SystemProfiler {
     ///
     /// # Returns
     ///
-    /// A map from `(jobid, stepid)` to the aggregated [`SystemJobSnapshot`] for that job step.
+    /// A map from `(jobid, stepid)` to the aggregated [`SystemJobSnapshot`].
     fn collect_job_snapshots(
         &mut self,
         processes: &[HpcProcess],
@@ -228,21 +244,23 @@ impl SystemProfiler {
 
             snap.cpu_usage += info.cpu_usage();
             snap.memory_bytes += info.memory();
+            snap.virtual_memory_bytes += info.virtual_memory();
 
             let disk = info.disk_usage();
             snap.io_read_bytes += disk.read_bytes;
             snap.io_written_bytes += disk.written_bytes;
+
+            snap.process_count += 1;
         }
 
         jobs
     }
 
-    /// Collect per-job resource usage.
+    /// Collect per-job resource usage metrics.
     ///
     /// Delegates to [`collect_job_snapshots`](Self::collect_job_snapshots)
-    /// to build per-job usage data, then flattens each snapshot into four
-    /// metrics (CPU, memory, I/O read, I/O write), each labeled with the
-    /// originating `jobid` and `stepid`.
+    /// to build per-job usage data, then flattens each snapshot into
+    /// metrics labeled with the originating `jobid` and `stepid`.
     ///
     /// # Arguments
     ///
@@ -250,9 +268,14 @@ impl SystemProfiler {
     ///
     /// # Returns
     ///
-    /// A vector of profiling metrics including:
-    /// `job_cpu_usage_percent`, `job_memory_used_bytes`, `job_io_read_bytes`,
-    /// and `job_io_write_bytes`.
+    /// A vector of per-job metrics, including:
+    ///
+    /// * `kys_sys_job_cpu_usage_percent`
+    /// * `kys_sys_job_memory_used_bytes`
+    /// * `kys_sys_job_virtual_memory_bytes`
+    /// * `kys_sys_job_io_read_bytes`
+    /// * `kys_sys_job_io_write_bytes`
+    /// * `kys_sys_job_process_count`
     fn collect_job_metrics(&mut self, processes: &[HpcProcess]) -> Vec<Metric> {
         let snapshots = self.collect_job_snapshots(processes);
         let mut metrics = Vec::new();
@@ -273,6 +296,12 @@ impl SystemProfiler {
             });
 
             metrics.push(Metric {
+                name: "kys_sys_job_virtual_memory_bytes",
+                labels: labels.clone(),
+                value: snap.virtual_memory_bytes as f64,
+            });
+
+            metrics.push(Metric {
                 name: "kys_sys_job_io_read_bytes",
                 labels: labels.clone(),
                 value: snap.io_read_bytes as f64,
@@ -280,8 +309,14 @@ impl SystemProfiler {
 
             metrics.push(Metric {
                 name: "kys_sys_job_io_write_bytes",
-                labels,
+                labels: labels.clone(),
                 value: snap.io_written_bytes as f64,
+            });
+
+            metrics.push(Metric {
+                name: "kys_sys_job_process_count",
+                labels,
+                value: snap.process_count as f64,
             });
         }
 
@@ -294,7 +329,7 @@ impl Profiler for SystemProfiler {
     ///
     /// # Arguments
     ///
-    /// * `processes` - Active system processes to collect metrics for.
+    /// * `processes` - System processes to collect metrics for.
     ///
     /// # Returns
     ///
@@ -309,7 +344,6 @@ impl Profiler for SystemProfiler {
         let mut metrics = Vec::new();
         metrics.extend(self.collect_cpu());
         metrics.extend(self.collect_memory());
-        metrics.extend(self.collect_network());
         metrics.extend(self.collect_job_metrics(processes));
         Ok(metrics)
     }
