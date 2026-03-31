@@ -2,9 +2,33 @@
 
 A job-aware Prometheus exporter designed for the Keystone HPC platform.
 
-The Keystone Exporter runs on HPC compute nodes and exposes hardware telemetry combined with metadata from the underlying
-HPC scheduler. This telemetry is published over HTTP in Prometheus format, enabling operators to monitor resource
-consumption at the node and job level.
+The Keystone Exporter runs on HPC compute nodes and exposes hardware telemetry combined with metadata from the
+underlying HPC scheduler. This telemetry is published over HTTP in Prometheus format, enabling operators to monitor
+resource consumption at the node and job level.
+
+## Developer Quickstart
+
+The standard `run` command is used to build and launch a development version of the exporter.
+Commandline flags are used to enable various system profilers.
+For example:
+
+```bash
+cargo run -- --system
+```
+
+The exporter will begin serving metrics at http://127.0.0.1:9105/metrics.
+To verify the exporter is running:
+
+```bash
+# Health check
+curl -s http://127.0.0.1:9105/
+
+# Fetch metrics
+curl -s http://127.0.0.1:9105/metrics
+```
+
+The exporter requires Slurm's `scontrol` to be available on the host in order to discover active jobs.
+On nodes without Slurm, the exporter will still run but job-level metrics will not be reported.
 
 ## Architecture
 
@@ -41,13 +65,14 @@ The loop then sleeps for a configurable interval before repeating.
 ### Metrics Snapshot
 
 The metrics snapshot is shared between the collection thread and the HTTP server.
-The collection thread atomically updates the snapshot on every profiling pass, allowing HTTP handlers to load the 
-latest snapshot without locking or blocking the collector. 
+The collection thread atomically updates the snapshot on every profiling pass, allowing HTTP handlers to load the
+latest snapshot without locking or blocking the collector.
 This design decouples HTTP response latency from the metrics collection time.
 It also isolates the collection process from incoming HTTP requests, protecting the collector from high request volumes
-and possible DOS attacks. 
+and possible DOS attacks.
 
 ### HTTP Server
 
 The HTTP server exposes two routes: a root health check endpoint (`/`) and the metrics endpoint (`/metrics`).
-Prometheus metrics are read directly from the shared snapshot, minimizing the overhead incurred by incoming HTTP requests.
+Prometheus metrics are read directly from the shared snapshot, minimizing the overhead incurred by incoming HTTP
+requests.
