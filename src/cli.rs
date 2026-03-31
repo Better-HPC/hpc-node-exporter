@@ -2,11 +2,11 @@
 
 use clap::Parser;
 
-/// Parsed command-line arguments for `keystone-exporter`.
+/// Parsed command-line arguments
 #[derive(Parser, Debug)]
 #[command(
-    name = "keystone-exporter",
-    about = "A job-aware Prometheus exporter for the Keystone HPC platform.",
+    name = "hpc-node-exporter",
+    about = "A job-aware Prometheus exporter for the HPC systems.",
     version
 )]
 pub struct Args {

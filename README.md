@@ -1,8 +1,8 @@
-# Keystone Exporter
+# HPC Node Exporter
 
-A job-aware Prometheus exporter designed for the Keystone HPC platform.
+A job-aware Prometheus exporter designed for the HPC systems.
 
-The Keystone Exporter runs on HPC compute nodes and exposes hardware telemetry combined with metadata from the
+The exporter runs on HPC compute nodes and exposes hardware telemetry combined with metadata from the
 underlying HPC scheduler. This telemetry is published over HTTP in Prometheus format, enabling operators to monitor
 resource consumption at the node and job level.
 
@@ -32,7 +32,7 @@ On nodes without Slurm, the exporter will still run but job-level metrics will n
 
 ## Architecture
 
-The Keystone Exporter is structured around four primary subsystems: a scheduler interface, a set of hardware profilers,
+The exporter is structured around four primary subsystems: a scheduler interface, a set of hardware profilers,
 a metrics collector, and an HTTP server.
 These components are connected through a shared, lock-free snapshot that decouples metric collection from request
 serving.
