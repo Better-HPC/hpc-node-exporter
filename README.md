@@ -9,7 +9,7 @@ resource consumption at the node and job level.
 ## Developer Quickstart
 
 The standard `run` command is used to build and launch a development version of the exporter.
-Commandline flags are used to enable various system profilers.
+Commandline flags are used to enable various hardware profilers.
 For example:
 
 ```bash
@@ -32,9 +32,10 @@ On nodes without Slurm, the exporter will still run but job-level metrics will n
 
 ## Architecture
 
-The Keystone Exporter is structured around three primary subsystems: a scheduler interface, a set of hardware profilers,
-and an HTTP server. These components are connected through a shared, lock-free snapshot that decouples metric collection
-from request serving.
+The Keystone Exporter is structured around four primary subsystems: a scheduler interface, a set of hardware profilers,
+a metrics collector, and an HTTP server.
+These components are connected through a shared, lock-free snapshot that decouples metric collection from request
+serving.
 
 ![](assets/architecture.svg)
 
@@ -53,7 +54,7 @@ Each profiler is responsible for a different hardware type and returns updated m
 - **NVIDIA** — Opt-in via `--nvidia`. Collects GPU telemetry through the NVIDIA Management Library (NVML).
 
 Profiler failures are isolated and partial results are always preferred over a complete failure.
-If a profiler fails to resolve an individual metric, the remaining metrics will still render.
+If a profiler fails to collect an individual metric, the remaining metrics will still render.
 
 ### Collection Loop
 
@@ -66,10 +67,10 @@ The loop then sleeps for a configurable interval before repeating.
 
 The metrics snapshot is shared between the collection thread and the HTTP server.
 The collection thread atomically updates the snapshot on every profiling pass, allowing HTTP handlers to load the
-latest snapshot without locking or blocking the collector.
+latest snapshot without blocking the collector.
 This design decouples HTTP response latency from the metrics collection time.
 It also isolates the collection process from incoming HTTP requests, protecting the collector from high request volumes
-and possible DOS attacks.
+and potential DOS attacks.
 
 ### HTTP Server
 
