@@ -216,13 +216,13 @@ impl Profiler for NvidiaProfiler {
             let labels = Self::job_labels(jobid, stepid, gpu_uuid);
 
             metrics.push(Metric {
-                name: "kys_job_gpu_memory_used_bytes",
+                name: "kys_gpu_job_memory_used_bytes",
                 labels: labels.clone(),
                 value: snap.memory_bytes as f64,
             });
 
             metrics.push(Metric {
-                name: "kys_job_gpu_process_count",
+                name: "kys_gpu_job_process_count",
                 labels,
                 value: snap.process_count as f64,
             });
