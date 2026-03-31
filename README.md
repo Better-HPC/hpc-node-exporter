@@ -37,7 +37,9 @@ a metrics collector, and an HTTP server.
 These components are connected through a shared, lock-free snapshot that decouples metric collection from request
 serving.
 
-![](assets/architecture.svg)
+<p align="center">
+  <img src="assets/architecture.svg" />
+</p>
 
 ### Scheduler
 
