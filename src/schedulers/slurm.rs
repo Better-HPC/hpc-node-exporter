@@ -36,7 +36,7 @@ impl SlurmScheduler {
     /// # Errors
     ///
     /// Returns an error if the command fails or exceeds the configured timeout.
-    fn fetch_scontrol_output(&self) -> io::Result<String> {
+    fn fetch_scontrol_output(&self) -> io::Result<Vec<String>> {
         // Launch `scontrol` call in a dedicated thread.
         let mut child = Command::new("scontrol")
             .arg("listpids")
@@ -48,8 +48,6 @@ impl SlurmScheduler {
         let status = match child.wait_timeout(self.command_timeout)? {
             Some(status) => status,
             None => {
-                // Deadline exceeded — forcibly terminate the child and
-                // reap it to avoid leaving a zombie process.
                 child.kill()?;
                 child.wait()?;
                 return Err(io::Error::new(
@@ -59,7 +57,7 @@ impl SlurmScheduler {
             }
         };
 
-        // If command errored, return the error.
+        // Make sure scontrol call exited successfully.
         if !status.success() {
             let mut stderr = String::new();
             if let Some(mut err) = child.stderr.take() {
@@ -78,7 +76,8 @@ impl SlurmScheduler {
             out.read_to_string(&mut stdout)?;
         }
 
-        Ok(stdout)
+        // Clean output and return a vector of stdout lines
+        Ok(stdout.trim().lines().map(String::from).collect())
     }
 
     /// Builds a mapping from column name to positional index by parsing the
@@ -91,8 +90,7 @@ impl SlurmScheduler {
             .collect()
     }
 
-    /// Parses a single `scontrol listpids` data row using the given column
-    /// index mapping.
+    /// Parses a single `scontrol listpids` data row using the given column indices.
     ///
     /// Returns `(jobid, stepid, pid)` for valid rows and `None` for
     /// malformed lines or negative (pending) PIDs.
@@ -127,16 +125,15 @@ impl HpcScheduler for SlurmScheduler {
     /// subsequent row. Warns and returns an empty list if the expected
     /// columns are missing.
     fn get_processes(&self) -> Result<Vec<HpcProcess>, Box<dyn Error>> {
-        let output = self.fetch_scontrol_output()?;
-        let mut lines = output.trim().lines();
+        let mut lines = self.fetch_scontrol_output()?;
 
         // Parse the header to discover column positions.
-        let header = match lines.next() {
-            Some(h) => h,
-            None => return Ok(Vec::new()),
-        };
+        if lines.is_empty() {
+            return Ok(Vec::new());
+        }
 
-        let columns = Self::parse_scontrol_header(header);
+        let header = lines.remove(0);
+        let columns = Self::parse_scontrol_header(&header);
 
         let (pid_idx, jobid_idx, stepid_idx) = match (
             columns.get(COL_PID),
@@ -147,13 +144,14 @@ impl HpcScheduler for SlurmScheduler {
             _ => {
                 warn!(
                     "scontrol listpids header missing expected columns \
-                         (expected {COL_PID}, {COL_JOBID}, {COL_STEPID}): {header:?}"
+                     (expected {COL_PID}, {COL_JOBID}, {COL_STEPID}): {header:?}"
                 );
                 return Ok(Vec::new());
             }
         };
 
         Ok(lines
+            .iter()
             .filter_map(|line| Self::parse_scontrol_line(line, pid_idx, jobid_idx, stepid_idx))
             .map(|(jobid, stepid, pid)| HpcProcess { jobid, stepid, pid })
             .collect())
