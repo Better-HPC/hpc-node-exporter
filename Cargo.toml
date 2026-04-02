@@ -27,5 +27,5 @@ strip = true
 
 [package.metadata.generate-rpm]
 assets = [
-    { source = "target/release/keystone-exporter", dest = "/usr/bin/keystone-exporter", mode = "755" },
+    { source = "target/release/hpc-node-exporter", dest = "/usr/bin/hpc-node-exporter", mode = "755" },
 ]
