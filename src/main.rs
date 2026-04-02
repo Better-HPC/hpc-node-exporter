@@ -57,8 +57,8 @@ fn init_logging(quiet: bool) -> Result<(), Box<dyn Error>> {
 }
 
 /// Initializes the HPC job scheduler.
-fn init_hpc_scheduler() -> Box<dyn HpcScheduler + Send> {
-    Box::new(SlurmScheduler::default())
+fn init_hpc_scheduler(command_timeout: Duration) -> Box<dyn HpcScheduler + Send> {
+    Box::new(SlurmScheduler::new(command_timeout))
 }
 
 /// Initializes hardware profilers based on the requested flags.
@@ -100,7 +100,7 @@ async fn main() {
     init_logging(args.quiet).expect("Failed to initialize logging");
 
     // Initialize system interfaces
-    let hpc_scheduler = init_hpc_scheduler();
+    let hpc_scheduler = init_hpc_scheduler(Duration::from_secs(args.sched_timeout));
     let hardware_profilers = init_profilers(args.system, args.nvidia).unwrap_or_else(|e| {
         error!("failed to initialize profilers: {e}");
         std::process::exit(1);

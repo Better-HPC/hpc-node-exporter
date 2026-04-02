@@ -2,7 +2,6 @@
 
 use clap::Parser;
 
-/// Parsed command-line arguments
 #[derive(Parser, Debug)]
 #[command(
     name = "hpc-node-exporter",
@@ -29,6 +28,10 @@ pub struct Args {
     /// Metric collection interval in seconds.
     #[arg(long, default_value_t = 1, value_name = "SECONDS")]
     pub interval: u64,
+
+    /// Timeout in seconds for scheduler commands (e.g. scontrol).
+    #[arg(long, default_value_t = 30, value_name = "SECONDS")]
+    pub sched_timeout: u64,
 
     /// Suppress console log output.
     #[arg(long)]
