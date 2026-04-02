@@ -11,7 +11,8 @@ use nvml_wrapper::enum_wrappers::device::{Clock, TemperatureSensor};
 use nvml_wrapper::enums::device::UsedGpuMemory;
 use nvml_wrapper::Nvml;
 
-use crate::profilers::{Metric, Profiler, HOSTNAME};
+use crate::metrics::{MetricFamily, MetricType};
+use crate::profilers::{Profiler, HOSTNAME};
 use crate::schedulers::HpcProcess;
 
 /// Aggregated per-job GPU usage across one or more devices.
@@ -71,16 +72,70 @@ impl Profiler for NvidiaProfiler {
     ///
     /// Individual device or process query failures are logged as warnings
     /// and skipped; an error is returned only on a fundamental NVML failure.
-    fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
-        let mut metrics = Vec::new();
-
+    fn collect_metrics(
+        &mut self,
+        processes: &[HpcProcess],
+    ) -> Result<Vec<MetricFamily>, Box<dyn Error>> {
         let count = match self.nvml.device_count() {
             Ok(c) => c,
             Err(e) => {
                 warn!("failed to get GPU device count: {e}");
-                return Ok(metrics);
+                return Ok(Vec::new());
             }
         };
+
+        // Declare all card-level families up front so each device's
+        // samples land in the correct shared family.
+        let mut gpu_util = MetricFamily::new(
+            "hpcexp_gpu_utilization_percent",
+            "GPU core utilization as a percentage.",
+            MetricType::Gauge,
+        );
+        let mut mem_util = MetricFamily::new(
+            "hpcexp_gpu_memory_utilization_percent",
+            "GPU memory controller utilization as a percentage.",
+            MetricType::Gauge,
+        );
+        let mut mem_total = MetricFamily::new(
+            "hpcexp_gpu_memory_total_bytes",
+            "Total GPU memory on this device in bytes.",
+            MetricType::Gauge,
+        );
+        let mut mem_used = MetricFamily::new(
+            "hpcexp_gpu_memory_used_bytes",
+            "GPU memory currently in use on this device in bytes.",
+            MetricType::Gauge,
+        );
+        let mut mem_free = MetricFamily::new(
+            "hpcexp_gpu_memory_free_bytes",
+            "GPU memory currently free on this device in bytes.",
+            MetricType::Gauge,
+        );
+        let mut temp = MetricFamily::new(
+            "hpcexp_gpu_temperature_celsius",
+            "GPU core temperature in degrees Celsius.",
+            MetricType::Gauge,
+        );
+        let mut power = MetricFamily::new(
+            "hpcexp_gpu_power_usage_watts",
+            "GPU power draw in watts.",
+            MetricType::Gauge,
+        );
+        let mut clock_graphics = MetricFamily::new(
+            "hpcexp_gpu_clock_graphics_mhz",
+            "Current GPU graphics clock speed in MHz.",
+            MetricType::Gauge,
+        );
+        let mut clock_memory = MetricFamily::new(
+            "hpcexp_gpu_clock_memory_mhz",
+            "Current GPU memory clock speed in MHz.",
+            MetricType::Gauge,
+        );
+        let mut fan = MetricFamily::new(
+            "hpcexp_gpu_fan_speed_percent",
+            "GPU fan speed as a percentage of maximum.",
+            MetricType::Gauge,
+        );
 
         // Build a PID → (jobid, stepid) lookup for O(1) matching.
         let pid_to_job: HashMap<u32, (&str, &str)> = processes
@@ -110,77 +165,35 @@ impl Profiler for NvidiaProfiler {
 
             let labels = Self::gpu_labels(&uuid);
 
-            // --- Node-level metrics ---
-
             if let Ok(util) = device.utilization_rates() {
-                metrics.push(Metric {
-                    name: "hpcexp_gpu_utilization_percent",
-                    labels: labels.clone(),
-                    value: util.gpu as f64,
-                });
-                metrics.push(Metric {
-                    name: "hpcexp_gpu_memory_utilization_percent",
-                    labels: labels.clone(),
-                    value: util.memory as f64,
-                });
+                gpu_util.add(labels.clone(), util.gpu as f64);
+                mem_util.add(labels.clone(), util.memory as f64);
             }
 
-            if let Ok(mem) = device.memory_info() {
-                metrics.push(Metric {
-                    name: "hpcexp_gpu_memory_total_bytes",
-                    labels: labels.clone(),
-                    value: mem.total as f64,
-                });
-                metrics.push(Metric {
-                    name: "hpcexp_gpu_memory_used_bytes",
-                    labels: labels.clone(),
-                    value: mem.used as f64,
-                });
-                metrics.push(Metric {
-                    name: "hpcexp_gpu_memory_free_bytes",
-                    labels: labels.clone(),
-                    value: mem.free as f64,
-                });
+            if let Ok(info) = device.memory_info() {
+                mem_total.add(labels.clone(), info.total as f64);
+                mem_used.add(labels.clone(), info.used as f64);
+                mem_free.add(labels.clone(), info.free as f64);
             }
 
-            if let Ok(temp) = device.temperature(TemperatureSensor::Gpu) {
-                metrics.push(Metric {
-                    name: "hpcexp_gpu_temperature_celsius",
-                    labels: labels.clone(),
-                    value: temp as f64,
-                });
+            if let Ok(t) = device.temperature(TemperatureSensor::Gpu) {
+                temp.add(labels.clone(), t as f64);
             }
 
-            if let Ok(power) = device.power_usage() {
-                metrics.push(Metric {
-                    name: "hpcexp_gpu_power_usage_watts",
-                    labels: labels.clone(),
-                    value: power as f64 / 1000.0,
-                });
+            if let Ok(p) = device.power_usage() {
+                power.add(labels.clone(), p as f64 / 1000.0);
             }
 
-            if let Ok(clock) = device.clock_info(Clock::Graphics) {
-                metrics.push(Metric {
-                    name: "hpcexp_gpu_clock_graphics_mhz",
-                    labels: labels.clone(),
-                    value: clock as f64,
-                });
+            if let Ok(c) = device.clock_info(Clock::Graphics) {
+                clock_graphics.add(labels.clone(), c as f64);
             }
 
-            if let Ok(clock) = device.clock_info(Clock::Memory) {
-                metrics.push(Metric {
-                    name: "hpcexp_gpu_clock_memory_mhz",
-                    labels: labels.clone(),
-                    value: clock as f64,
-                });
+            if let Ok(c) = device.clock_info(Clock::Memory) {
+                clock_memory.add(labels.clone(), c as f64);
             }
 
-            if let Ok(fan) = device.fan_speed(0) {
-                metrics.push(Metric {
-                    name: "hpcexp_gpu_fan_speed_percent",
-                    labels: labels.clone(),
-                    value: fan as f64,
-                });
+            if let Ok(f) = device.fan_speed(0) {
+                fan.add(labels, f as f64);
             }
 
             // --- Per-job memory from compute processes on this device ---
@@ -202,32 +215,36 @@ impl Profiler for NvidiaProfiler {
                     .entry((jobid.to_string(), stepid.to_string(), uuid.clone()))
                     .or_default();
 
-                let mem = match proc_info.used_gpu_memory {
+                snap.memory_bytes += match proc_info.used_gpu_memory {
                     UsedGpuMemory::Used(bytes) => bytes,
                     UsedGpuMemory::Unavailable => 0,
                 };
-                snap.memory_bytes += mem;
                 snap.process_count += 1;
             }
         }
 
-        // Flatten job snapshots into metrics.
+        // Flatten job snapshots into their families.
+        let mut job_mem = MetricFamily::new(
+            "hpcexp_gpu_job_memory_used_bytes",
+            "GPU memory used by an HPC job step on a specific device, in bytes.",
+            MetricType::Gauge,
+        );
+        let mut job_procs = MetricFamily::new(
+            "hpcexp_gpu_job_process_count",
+            "Number of processes belonging to an HPC job step running on a specific GPU.",
+            MetricType::Gauge,
+        );
+
         for ((jobid, stepid, gpu_uuid), snap) in &snapshots {
             let labels = Self::job_labels(jobid, stepid, gpu_uuid);
-
-            metrics.push(Metric {
-                name: "hpcexp_gpu_job_memory_used_bytes",
-                labels: labels.clone(),
-                value: snap.memory_bytes as f64,
-            });
-
-            metrics.push(Metric {
-                name: "hpcexp_gpu_job_process_count",
-                labels,
-                value: snap.process_count as f64,
-            });
+            job_mem.add(labels.clone(), snap.memory_bytes as f64);
+            job_procs.add(labels, snap.process_count as f64);
         }
 
-        Ok(metrics)
+        Ok(vec![
+            gpu_util, mem_util, mem_total, mem_used, mem_free,
+            temp, power, clock_graphics, clock_memory, fan,
+            job_mem, job_procs,
+        ])
     }
 }

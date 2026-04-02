@@ -9,7 +9,8 @@ use std::error::Error;
 use log::warn;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
-use crate::profilers::{Metric, Profiler, HOSTNAME};
+use crate::metrics::{MetricFamily, MetricSample, MetricType};
+use crate::profilers::{Profiler, HOSTNAME};
 use crate::schedulers::HpcProcess;
 
 /// Aggregated per-job system usage across one or more processes.
@@ -69,7 +70,7 @@ impl SystemProfiler {
     }
 
     /// Collects CPU metrics across all cores.
-    fn collect_cpu(&mut self) -> Vec<Metric> {
+    fn collect_cpu(&mut self) -> Vec<MetricFamily> {
         self.sys.refresh_cpu_usage();
 
         let cpus = self.sys.cpus();
@@ -77,82 +78,79 @@ impl SystemProfiler {
         let cpu_count = cpus.len() as f64;
         let load = System::load_average();
 
-        let mut metrics = vec![
-            Metric {
-                name: "hpcexp_sys_cpu_usage_percent",
-                labels: Self::node_labels(),
-                value: total_cpu,
-            },
-            Metric {
-                name: "hpcexp_sys_cpu_count",
-                labels: Self::node_labels(),
-                value: cpu_count,
-            },
-            Metric {
-                name: "hpcexp_sys_load_avg_1m",
-                labels: Self::node_labels(),
-                value: load.one,
-            },
-            Metric {
-                name: "hpcexp_sys_load_avg_5m",
-                labels: Self::node_labels(),
-                value: load.five,
-            },
-            Metric {
-                name: "hpcexp_sys_load_avg_15m",
-                labels: Self::node_labels(),
-                value: load.fifteen,
-            },
+        let node = Self::node_labels();
+
+        let mut families = vec![
+            MetricFamily::from_samples(
+                "hpcexp_sys_cpu_usage_percent",
+                "Total CPU usage across all cores as a percentage.",
+                MetricType::Gauge,
+                vec![MetricSample { labels: node.clone(), value: total_cpu }],
+            ),
+            MetricFamily::from_samples(
+                "hpcexp_sys_cpu_count",
+                "Number of logical CPU cores available on this node.",
+                MetricType::Gauge,
+                vec![MetricSample { labels: node.clone(), value: cpu_count }],
+            ),
+            MetricFamily::from_samples(
+                "hpcexp_sys_load_avg_1m",
+                "System load average over the last 1 minute.",
+                MetricType::Gauge,
+                vec![MetricSample { labels: node.clone(), value: load.one }],
+            ),
+            MetricFamily::from_samples(
+                "hpcexp_sys_load_avg_5m",
+                "System load average over the last 5 minutes.",
+                MetricType::Gauge,
+                vec![MetricSample { labels: node.clone(), value: load.five }],
+            ),
+            MetricFamily::from_samples(
+                "hpcexp_sys_load_avg_15m",
+                "System load average over the last 15 minutes.",
+                MetricType::Gauge,
+                vec![MetricSample { labels: node, value: load.fifteen }],
+            ),
         ];
 
-        // Per-core utilization
+        // Per-core utilization: all cores share one family, one sample each.
+        let mut core_usage = MetricFamily::new(
+            "hpcexp_sys_cpu_core_usage_percent",
+            "CPU usage per logical core as a percentage.",
+            MetricType::Gauge,
+        );
         for (i, cpu) in cpus.iter().enumerate() {
-            metrics.push(Metric {
-                name: "hpcexp_sys_cpu_core_usage_percent",
-                labels: Self::core_labels(i),
-                value: cpu.cpu_usage() as f64,
-            });
+            core_usage.add(Self::core_labels(i), cpu.cpu_usage() as f64);
         }
+        families.push(core_usage);
 
-        metrics
+        families
     }
 
     /// Returns physical memory and swap metrics.
-    fn collect_memory(&mut self) -> Vec<Metric> {
+    fn collect_memory(&mut self) -> Vec<MetricFamily> {
         self.sys.refresh_memory();
 
-        vec![
-            Metric {
-                name: "hpcexp_sys_memory_total_bytes",
-                labels: Self::node_labels(),
-                value: self.sys.total_memory() as f64,
-            },
-            Metric {
-                name: "hpcexp_sys_memory_used_bytes",
-                labels: Self::node_labels(),
-                value: self.sys.used_memory() as f64,
-            },
-            Metric {
-                name: "hpcexp_sys_memory_available_bytes",
-                labels: Self::node_labels(),
-                value: self.sys.available_memory() as f64,
-            },
-            Metric {
-                name: "hpcexp_sys_swap_total_bytes",
-                labels: Self::node_labels(),
-                value: self.sys.total_swap() as f64,
-            },
-            Metric {
-                name: "hpcexp_sys_swap_used_bytes",
-                labels: Self::node_labels(),
-                value: self.sys.used_swap() as f64,
-            },
-            Metric {
-                name: "hpcexp_sys_swap_free_bytes",
-                labels: Self::node_labels(),
-                value: self.sys.free_swap() as f64,
-            },
+        let node = Self::node_labels();
+
+        [
+            ("hpcexp_sys_memory_total_bytes",     "Total physical memory available on this node in bytes.",      self.sys.total_memory() as f64),
+            ("hpcexp_sys_memory_used_bytes",       "Physical memory currently in use on this node in bytes.",     self.sys.used_memory() as f64),
+            ("hpcexp_sys_memory_available_bytes",  "Physical memory currently available on this node in bytes.",  self.sys.available_memory() as f64),
+            ("hpcexp_sys_swap_total_bytes",        "Total swap space on this node in bytes.",                     self.sys.total_swap() as f64),
+            ("hpcexp_sys_swap_used_bytes",         "Swap space currently in use on this node in bytes.",          self.sys.used_swap() as f64),
+            ("hpcexp_sys_swap_free_bytes",         "Swap space currently free on this node in bytes.",            self.sys.free_swap() as f64),
         ]
+            .into_iter()
+            .map(|(name, help, value)| {
+                MetricFamily::from_samples(
+                    name,
+                    help,
+                    MetricType::Gauge,
+                    vec![MetricSample { labels: node.clone(), value }],
+                )
+            })
+            .collect()
     }
 
     /// Builds per-job resource snapshots by aggregating process data.
@@ -210,52 +208,55 @@ impl SystemProfiler {
     /// Returns per-job resource usage metrics.
     ///
     /// Delegates to [`collect_job_snapshots`](Self::collect_job_snapshots)
-    /// and flattens each snapshot into labeled metrics.
-    fn collect_job_metrics(&mut self, processes: &[HpcProcess]) -> Vec<Metric> {
+    /// and flattens each snapshot into labeled metric families.
+    fn collect_job_metrics(&mut self, processes: &[HpcProcess]) -> Vec<MetricFamily> {
         let snapshots = self.collect_job_snapshots(processes);
-        let mut metrics = Vec::new();
+        if snapshots.is_empty() {
+            return Vec::new();
+        }
+
+        let mut cpu = MetricFamily::new(
+            "hpcexp_sys_job_cpu_usage_percent",
+            "Total CPU usage for an HPC job step across all its processes, as a percentage.",
+            MetricType::Gauge,
+        );
+        let mut mem = MetricFamily::new(
+            "hpcexp_sys_job_memory_used_bytes",
+            "Physical memory used by an HPC job step across all its processes, in bytes.",
+            MetricType::Gauge,
+        );
+        let mut vmem = MetricFamily::new(
+            "hpcexp_sys_job_virtual_memory_bytes",
+            "Virtual memory used by an HPC job step across all its processes, in bytes.",
+            MetricType::Gauge,
+        );
+        let mut io_read = MetricFamily::new(
+            "hpcexp_sys_job_io_read_bytes",
+            "Bytes read from disk by an HPC job step since it started.",
+            MetricType::Counter,
+        );
+        let mut io_write = MetricFamily::new(
+            "hpcexp_sys_job_io_write_bytes",
+            "Bytes written to disk by an HPC job step since it started.",
+            MetricType::Counter,
+        );
+        let mut procs = MetricFamily::new(
+            "hpcexp_sys_job_process_count",
+            "Number of running processes belonging to an HPC job step.",
+            MetricType::Gauge,
+        );
 
         for ((jobid, stepid), snap) in &snapshots {
             let labels = Self::job_labels(jobid, stepid);
-
-            metrics.push(Metric {
-                name: "hpcexp_sys_job_cpu_usage_percent",
-                labels: labels.clone(),
-                value: snap.cpu_usage as f64,
-            });
-
-            metrics.push(Metric {
-                name: "hpcexp_sys_job_memory_used_bytes",
-                labels: labels.clone(),
-                value: snap.memory_bytes as f64,
-            });
-
-            metrics.push(Metric {
-                name: "hpcexp_sys_job_virtual_memory_bytes",
-                labels: labels.clone(),
-                value: snap.virtual_memory_bytes as f64,
-            });
-
-            metrics.push(Metric {
-                name: "hpcexp_sys_job_io_read_bytes",
-                labels: labels.clone(),
-                value: snap.io_read_bytes as f64,
-            });
-
-            metrics.push(Metric {
-                name: "hpcexp_sys_job_io_write_bytes",
-                labels: labels.clone(),
-                value: snap.io_written_bytes as f64,
-            });
-
-            metrics.push(Metric {
-                name: "hpcexp_sys_job_process_count",
-                labels,
-                value: snap.process_count as f64,
-            });
+            cpu.add(labels.clone(), snap.cpu_usage as f64);
+            mem.add(labels.clone(), snap.memory_bytes as f64);
+            vmem.add(labels.clone(), snap.virtual_memory_bytes as f64);
+            io_read.add(labels.clone(), snap.io_read_bytes as f64);
+            io_write.add(labels.clone(), snap.io_written_bytes as f64);
+            procs.add(labels, snap.process_count as f64);
         }
 
-        metrics
+        vec![cpu, mem, vmem, io_read, io_write, procs]
     }
 }
 
@@ -264,11 +265,14 @@ impl Profiler for SystemProfiler {
     ///
     /// Individual process query failures are logged and skipped rather
     /// than propagated.
-    fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
-        let mut metrics = Vec::new();
-        metrics.extend(self.collect_cpu());
-        metrics.extend(self.collect_memory());
-        metrics.extend(self.collect_job_metrics(processes));
-        Ok(metrics)
+    fn collect_metrics(
+        &mut self,
+        processes: &[HpcProcess],
+    ) -> Result<Vec<MetricFamily>, Box<dyn Error>> {
+        let mut families = Vec::new();
+        families.extend(self.collect_cpu());
+        families.extend(self.collect_memory());
+        families.extend(self.collect_job_metrics(processes));
+        Ok(families)
     }
 }
