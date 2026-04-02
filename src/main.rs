@@ -13,6 +13,7 @@ mod schedulers;
 
 use arc_swap::ArcSwap;
 use bytes::Bytes;
+use clap::Parser;
 use log::{error, info};
 use std::error::Error;
 use std::sync::Arc;
@@ -28,11 +29,12 @@ use crate::schedulers::HpcScheduler;
 
 /// Configures optional to stdout.
 fn init_logging(quiet: bool) -> Result<(), Box<dyn Error>> {
-    let mut config = fern::Dispatch::new()
-        .level(log::LevelFilter::Info)
-        .format(|out, message, record| {
-            out.finish(format_args!("[{}] {}", record.level(), message))
-        });
+    let mut config =
+        fern::Dispatch::new()
+            .level(log::LevelFilter::Info)
+            .format(|out, message, record| {
+                out.finish(format_args!("[{}] {}", record.level(), message))
+            });
 
     if !quiet {
         config = config.chain(std::io::stdout());

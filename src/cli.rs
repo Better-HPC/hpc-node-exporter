@@ -37,10 +37,3 @@ pub struct Args {
     #[arg(long)]
     pub quiet: bool,
 }
-
-impl Args {
-    /// Parses command-line arguments.
-    pub fn parse() -> Self {
-        Parser::parse()
-    }
-}
