@@ -1,44 +1,40 @@
 //! HTTP API server for Prometheus metric scraping.
 //!
 //! Exposes a `/metrics` endpoint that returns pre-collected telemetry in
-//! Prometheus text exposition format. Metrics are collected on a background
-//! thread (see [`crate::collector`]) and published via an [`ArcSwap`] snapshot
-//! that handlers read with zero contention.
+//! Prometheus text exposition format. Metrics are published via an
+//! [`ArcSwap`] snapshot that handlers read with zero contention.
 
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use axum::extract::State;
+use axum::http::header;
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
+use bytes::Bytes;
 use log::info;
 use tokio::net::TcpListener;
 
-/// GET handler returning an empty 200 OK response.
+/// Returns an empty `200 OK` for health checks.
 async fn status_handler() -> StatusCode {
     StatusCode::OK
 }
 
-/// GET handler returning the latest metrics snapshot.
-///
-/// # Returns
-///
-/// The latest Prometheus-format metrics string.
-async fn metrics_handler(State(snapshot): State<&'static ArcSwap<String>>) -> String {
-    snapshot.load().as_ref().clone()
+/// Returns the latest Prometheus-format metrics snapshot.
+async fn metrics_handler(State(snapshot): State<Arc<ArcSwap<Bytes>>>) -> impl IntoResponse {
+    let body = snapshot.load().as_ref().clone(); // clones the Bytes handle, not the data
+    let header = (
+        header::CONTENT_TYPE,
+        "text/plain; version=0.0.4; charset=utf-8",
+    );
+
+    ([header], body)
 }
 
-/// Build the Axum router with shared application state.
-///
-/// # Arguments
-///
-/// * `snapshot` - A `'static` reference to the shared [`ArcSwap<String>`].
-///
-/// # Returns
-///
-/// A configured [`Router`] with the `/` and `/metrics` routes registered.
-fn build_router(snapshot: &'static ArcSwap<String>) -> Router {
+/// Builds the Axum router with shared application state.
+fn build_router(snapshot: Arc<ArcSwap<Bytes>>) -> Router {
     Router::new()
         .route("/", get(status_handler))
         .route("/metrics", get(metrics_handler))
@@ -46,17 +42,10 @@ fn build_router(snapshot: &'static ArcSwap<String>) -> Router {
         .with_state(snapshot)
 }
 
-/// Start the HTTP server on the given host and port.
+/// Starts the HTTP server on the given `host` and `port`.
 ///
-/// The server reads rendered Prometheus metrics a shared
-/// [`ArcSwap<String>`] that is populated by a background
-/// collector thread.
-///
-/// # Arguments
-///
-/// * `host` - The network interface to bind to (e.g., `"127.0.0.1"`).
-/// * `port` - The TCP port to listen on.
-/// * `snapshot` - The shared snapshot that the collector thread writes to.
+/// Reads rendered Prometheus metrics from `snapshot`, which is populated
+/// by the background collector thread.
 ///
 /// # Errors
 ///
@@ -65,13 +54,8 @@ fn build_router(snapshot: &'static ArcSwap<String>) -> Router {
 pub async fn serve(
     host: &str,
     port: u16,
-    snapshot: Arc<ArcSwap<String>>,
+    snapshot: Arc<ArcSwap<Bytes>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let snapshot: &'static ArcSwap<String> = {
-        let leaked: &'static Arc<ArcSwap<String>> = Box::leak(Box::new(snapshot));
-        leaked.as_ref()
-    };
-
     let router = build_router(snapshot);
     let addr = format!("{host}:{port}");
     let listener = TcpListener::bind(&addr).await?;

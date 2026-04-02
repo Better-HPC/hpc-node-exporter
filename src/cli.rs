@@ -1,12 +1,11 @@
-//! Argument parsing for the package's command-line interface.
+//! Command-line argument parsing.
 
 use clap::Parser;
 
-/// Parsed command-line arguments.
 #[derive(Parser, Debug)]
 #[command(
-    name = "keystone-exporter",
-    about = "A job-aware Prometheus exporter for the Keystone HPC platform.",
+    name = "hpc-node-exporter",
+    about = "A job-aware Prometheus exporter for the HPC systems.",
     version
 )]
 pub struct Args {
@@ -30,14 +29,11 @@ pub struct Args {
     #[arg(long, default_value_t = 1, value_name = "SECONDS")]
     pub interval: u64,
 
+    /// Timeout in seconds for scheduler commands (e.g. scontrol).
+    #[arg(long, default_value_t = 30, value_name = "SECONDS")]
+    pub sched_timeout: u64,
+
     /// Suppress console log output.
     #[arg(long)]
     pub quiet: bool,
-}
-
-impl Args {
-    /// Parse command-line arguments and return them as an [`Args`] instance.
-    pub fn parse() -> Self {
-        Parser::parse()
-    }
 }

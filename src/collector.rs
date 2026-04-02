@@ -1,8 +1,8 @@
 //! Background metric collection.
 //!
-//! Metrics collection is executed in a background thread, rendered
-//! into Prometheus format, and published to an [`ArcSwap`] for
-//! consumption by the rest of the application.
+//! Metrics are collected in a background thread, rendered into Prometheus
+//! text exposition format, and published to an [`ArcSwap`] for lock-free
+//! reads by other application layers.
 
 use std::sync::Arc;
 use std::thread;
@@ -13,61 +13,50 @@ use log::{error, warn};
 
 use crate::profilers::Profiler;
 use crate::schedulers::HpcScheduler;
+use bytes::Bytes;
 
-/// Spawn the background collector thread.
-///
-/// The thread takes exclusive ownership of the profilers and scheduler,
-/// collecting metrics in a loop and publishing the rendered output to
-/// a shared `snapshot`. The thread runs for the lifetime of the process.
-///
-/// # Arguments
-///
-/// * `profilers` - The enabled profiler instances.
-/// * `scheduler` - The HPC scheduler used to discover active jobs.
-/// * `snapshot` - The shared snapshot that HTTP handlers read from.
-/// * `interval` - How often to collect and publish metrics.
+// Note: buf is now BytesMut, snapshot stores Bytes
 pub fn spawn(
     mut profilers: Vec<Box<dyn Profiler + Send>>,
     scheduler: Box<dyn HpcScheduler + Send>,
-    snapshot: Arc<ArcSwap<String>>,
+    snapshot: Arc<ArcSwap<Bytes>>,
     interval: Duration,
 ) {
-    thread::spawn(move || loop {
-        let output = collect(&mut profilers, &*scheduler);
-        snapshot.store(Arc::new(output));
-        thread::sleep(interval);
+    thread::spawn(move || {
+        let mut buf = bytes::BytesMut::new();
+        loop {
+            collect_into_buffer(&mut profilers, &*scheduler, &mut buf);
+            snapshot.store(Arc::new(buf.split().freeze()));
+            thread::sleep(interval);
+        }
     });
 }
 
-/// Run a single collection pass across all profilers.
+/// Collect metrics from all profilers and store results in a buffer.
 ///
-/// Collects hardware metrics from each profiler and renders them
-/// into a single Prometheus-format string. Failures at any stage
-/// are logged and skipped rather than propagated, ensuring partial
-/// metrics are still reported if a single profiler fails.
-///
-/// # Arguments
-///
-/// * `profilers` - The profiler instances to collect from.
-/// * `scheduler` - The HPC scheduler used to discover active job PIDs.
-///
-/// # Returns
-///
-/// A Prometheus text exposition format string containing the rendered
-/// metrics from all profilers.
-fn collect(profilers: &mut [Box<dyn Profiler + Send>], scheduler: &dyn HpcScheduler) -> String {
+/// Failures at any stage are logged and skipped rather than propagated,
+/// so partial metrics are still reported when a single profiler fails.
+fn collect_into_buffer(
+    profilers: &mut [Box<dyn Profiler + Send>],
+    scheduler: &dyn HpcScheduler,
+    buf: &mut bytes::BytesMut,
+) {
     let processes = scheduler.get_processes().unwrap_or_else(|e| {
         warn!("failed to fetch job pids: {e}");
         Vec::new()
     });
 
-    let mut output = String::new();
+    // Clear existing metrics from the memory buffer
+    buf.clear();
     for profiler in profilers.iter_mut() {
         match profiler.collect_metrics(&processes) {
-            Ok(metrics) => {
-                for m in &metrics {
-                    output.push_str(&m.to_prometheus());
-                    output.push('\n');
+            Ok(families) => {
+                for family in &families {
+                    let rendered = family.to_prometheus();
+                    if !rendered.is_empty() {
+                        buf.extend_from_slice(rendered.as_bytes());
+                        buf.extend_from_slice(b"\n");
+                    }
                 }
             }
             Err(e) => {
@@ -75,6 +64,4 @@ fn collect(profilers: &mut [Box<dyn Profiler + Send>], scheduler: &dyn HpcSchedu
             }
         }
     }
-
-    output
 }

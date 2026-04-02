@@ -1,3 +1,3 @@
-# Keystone Exporter
+# HPC Node Exporter
 
-An HPC telemetry agent designed for the Keystone platform.
+A job-aware Prometheus exporter designed for the HPC systems.

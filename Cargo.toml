@@ -1,21 +1,22 @@
 [package]
-name = "keystone-exporter"
+name = "hpc-node-exporter"
 version = "0.0.0"
 edition = "2021"
-description = "An HPC telemetry agent designed for the Keystone platform."
-license = "LicenseRef-Proprietary"
+description = "An HPC telemetry agent designed for HPC systems."
+
 
 [dependencies]
 arc-swap = "1.9.0"
 axum = "0.8.8"
+bytes = "1.11.1"
 clap = { version = "4.5.60", features = ["derive"] }
 fern = { version = "0.7", features = ["syslog-7"] }
 gethostname = "1.1.0"
 log = "0.4.27"
 nvml-wrapper = "0.12.0"
 sysinfo = "0.38.2"
-syslog = "7.0.0"
 tokio = { version = "1.50.0", features = ["rt-multi-thread", "macros", "net"] }
+wait-timeout = "0.2.1"
 
 [profile.release]
 codegen-units = 1
