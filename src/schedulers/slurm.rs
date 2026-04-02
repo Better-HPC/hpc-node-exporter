@@ -10,6 +10,7 @@ use std::io::Read;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
+use log::warn;
 use wait_timeout::ChildExt;
 
 use crate::schedulers::{HpcProcess, HpcScheduler};
@@ -143,40 +144,50 @@ impl SlurmScheduler {
         })
     }
 
-    /// Parses a single `scontrol listpids` data row using the given
-    /// column indices.
+    /// Parses a single `scontrol listpids` data row using the given column indices.
     ///
-    /// Returns `(jobid, stepid, pid)` for valid rows and `None` for
-    /// malformed lines or negative (pending) PIDs.
+    /// Returns the `Ok((jobid, stepid, pid))` for valid rows, `Ok(None)` for pending
+    /// processes (PID=-1), and `Err(&'static str)` when a row is malformed or unparseable.
     fn parse_scontrol_line(
         line: &str,
         pid_col_idx: usize,
         jobid_col_idx: usize,
         stepid_col_idx: usize,
-    ) -> Option<(String, String, u32)> {
+    ) -> Result<Option<(String, String, u32)>, &'static str> {
         let parts: Vec<&str> = line.split_whitespace().collect();
 
-        let pid_str = parts.get(pid_col_idx)?;
-        let jobid = parts.get(jobid_col_idx)?;
-        let stepid = parts.get(stepid_col_idx)?;
+        let pid_str = parts
+            .get(pid_col_idx)
+            .ok_or("Scontrol output missing PID header")?;
+
+        let jobid = parts
+            .get(jobid_col_idx)
+            .ok_or("Scontrol output missing JOBID header")?;
+
+        let stepid = parts
+            .get(stepid_col_idx)
+            .ok_or("Scontrol output missing STEPID header")?;
 
         // Parse as i64 first to detect Slurm's -1 sentinel for pending PIDs.
-        let pid: i64 = pid_str.parse().ok()?;
+        let pid: i64 = pid_str
+            .parse()
+            .map_err(|_| "PID field is not a valid integer")?;
+
         if pid < 0 {
-            return None;
+            return Ok(None);
         }
 
-        let pid: u32 = pid.try_into().ok()?;
-        Some((jobid.to_string(), stepid.to_string(), pid))
+        let pid: u32 = pid.try_into().map_err(|_| "PID value overflows u32")?;
+        Ok(Some((jobid.to_string(), stepid.to_string(), pid)))
     }
 }
 
 impl HpcScheduler for SlurmScheduler {
     /// Returns the currently active HPC processes.
     ///
-    /// Parses the header row of `scontrol listpids` to locate the
-    /// required columns by name, then extracts process data from each
-    /// subsequent row.
+    /// Parses the PID table from `scontrol listpids` to retrieve PID values
+    ///for all active Slurm jobs on the current node. Malformed or unparsable
+    /// table rows are logged and skipped.
     ///
     /// # Errors
     ///
@@ -189,10 +200,15 @@ impl HpcScheduler for SlurmScheduler {
         let header = lines.remove(0);
         let cols = Self::parse_scontrol_header(&header)?;
 
-        Ok(lines
-            .iter()
-            .filter_map(|line| Self::parse_scontrol_line(line, cols.pid, cols.jobid, cols.stepid))
-            .map(|(jobid, stepid, pid)| HpcProcess { jobid, stepid, pid })
-            .collect())
+        let mut processes = Vec::new();
+        for line in &lines {
+            match Self::parse_scontrol_line(line, cols.pid, cols.jobid, cols.stepid) {
+                Ok(Some((jobid, stepid, pid))) => processes.push(HpcProcess { jobid, stepid, pid }),
+                Ok(None) => {}
+                Err(reason) => warn!("skipping scontrol row ({reason}): {line:?}"),
+            }
+        }
+
+        Ok(processes)
     }
 }
