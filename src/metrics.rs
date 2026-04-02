@@ -105,7 +105,7 @@ impl MetricFamily {
                 .collect();
 
             out.push_str(&format!(
-                "{name}{{{labels}}} {value:.1}\n",
+                "{name}{{{labels}}} {value:.4}\n",
                 name = self.name,
                 labels = labels.join(","),
                 value = sample.value,
