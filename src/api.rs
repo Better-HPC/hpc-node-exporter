@@ -20,12 +20,12 @@ async fn status_handler() -> StatusCode {
 }
 
 /// Returns the latest Prometheus-format metrics snapshot.
-async fn metrics_handler(State(snapshot): State<&'static ArcSwap<String>>) -> String {
+async fn metrics_handler(State(snapshot): State<Arc<ArcSwap<String>>>) -> String {
     snapshot.load().as_ref().clone()
 }
 
 /// Builds the Axum router with shared application state.
-fn build_router(snapshot: &'static ArcSwap<String>) -> Router {
+fn build_router(snapshot: Arc<ArcSwap<String>>) -> Router {
     Router::new()
         .route("/", get(status_handler))
         .route("/metrics", get(metrics_handler))
@@ -47,11 +47,6 @@ pub async fn serve(
     port: u16,
     snapshot: Arc<ArcSwap<String>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let snapshot: &'static ArcSwap<String> = {
-        let leaked: &'static Arc<ArcSwap<String>> = Box::leak(Box::new(snapshot));
-        leaked.as_ref()
-    };
-
     let router = build_router(snapshot);
     let addr = format!("{host}:{port}");
     let listener = TcpListener::bind(&addr).await?;

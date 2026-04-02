@@ -28,7 +28,7 @@ impl DefaultProfiler {
 impl Profiler for DefaultProfiler {
     /// Returns high level status metrics.
     fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
-        let epoch_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH);
+        let epoch_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let unique_jobs: HashSet<&str> = processes.iter().map(|p| p.jobid.as_str()).collect();
 
         Ok(vec![
@@ -40,7 +40,7 @@ impl Profiler for DefaultProfiler {
             Metric {
                 name: "kys_scrape_time",
                 labels: vec![("hostname", HOSTNAME.clone())],
-                value: epoch_time?.as_secs_f64(),
+                value: epoch_time.as_secs_f64(),
             },
         ])
     }
