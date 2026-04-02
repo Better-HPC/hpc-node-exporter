@@ -96,7 +96,7 @@ impl SystemProfiler {
             let pid = Pid::from(proc.pid as usize);
             let Some(info) = self.sys.process(pid) else {
                 warn!(
-                    "pid {} reported by scheduler but not not found by profiler (job {}, step {})",
+                    "pid {} reported by scheduler but not found by profiler (job {}, step {})",
                     proc.pid, proc.jobid, proc.stepid
                 );
                 continue;

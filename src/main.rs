@@ -7,11 +7,12 @@
 mod api;
 mod cli;
 mod collector;
+mod metrics;
 mod profilers;
 mod schedulers;
-mod metrics;
 
 use arc_swap::ArcSwap;
+use bytes::Bytes;
 use log::{error, info};
 use std::error::Error;
 use std::sync::Arc;
@@ -108,7 +109,7 @@ async fn main() {
     });
 
     // Launch metrics collection
-    let metrics_store = Arc::new(ArcSwap::from_pointee(String::new()));
+    let metrics_store = Arc::new(ArcSwap::from_pointee(Bytes::new()));
     collector::spawn(
         hardware_profilers,
         hpc_scheduler,

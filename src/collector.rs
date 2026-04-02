@@ -13,42 +13,50 @@ use log::{error, warn};
 
 use crate::profilers::Profiler;
 use crate::schedulers::HpcScheduler;
+use bytes::Bytes;
 
-/// Spawns the background collector thread.
-///
-/// The thread takes exclusive ownership of the profilers and scheduler,
-/// collecting metrics in a loop and publishing the rendered output to
-/// `snapshot`.
+// Note: buf is now BytesMut, snapshot stores Bytes
 pub fn spawn(
     mut profilers: Vec<Box<dyn Profiler + Send>>,
     scheduler: Box<dyn HpcScheduler + Send>,
-    snapshot: Arc<ArcSwap<String>>,
+    snapshot: Arc<ArcSwap<Bytes>>,
     interval: Duration,
 ) {
-    thread::spawn(move || loop {
-        let output = collect(&mut profilers, &*scheduler);
-        snapshot.store(Arc::new(output));
-        thread::sleep(interval);
+    thread::spawn(move || {
+        let mut buf = bytes::BytesMut::new();
+        loop {
+            collect_into_buffer(&mut profilers, &*scheduler, &mut buf);
+            snapshot.store(Arc::new(buf.split().freeze()));
+            thread::sleep(interval);
+        }
     });
 }
 
-/// Runs a single collection pass across all profilers.
+/// Collect metrics from all profilers and store results in a buffer.
 ///
 /// Failures at any stage are logged and skipped rather than propagated,
 /// so partial metrics are still reported when a single profiler fails.
-fn collect(profilers: &mut [Box<dyn Profiler + Send>], scheduler: &dyn HpcScheduler) -> String {
+fn collect_into_buffer(
+    profilers: &mut [Box<dyn Profiler + Send>],
+    scheduler: &dyn HpcScheduler,
+    buf: &mut bytes::BytesMut,
+) {
     let processes = scheduler.get_processes().unwrap_or_else(|e| {
         warn!("failed to fetch job pids: {e}");
         Vec::new()
     });
 
-    let mut output = String::new();
+    // Clear existing metrics from the memory buffer
+    buf.clear();
     for profiler in profilers.iter_mut() {
         match profiler.collect_metrics(&processes) {
-            Ok(metrics) => {
-                for m in &metrics {
-                    output.push_str(&m.to_prometheus());
-                    output.push('\n');
+            Ok(families) => {
+                for family in &families {
+                    let rendered = family.to_prometheus();
+                    if !rendered.is_empty() {
+                        buf.extend_from_slice(rendered.as_bytes());
+                        buf.extend_from_slice(b"\n");
+                    }
                 }
             }
             Err(e) => {
@@ -56,6 +64,4 @@ fn collect(profilers: &mut [Box<dyn Profiler + Send>], scheduler: &dyn HpcSchedu
             }
         }
     }
-
-    output
 }
