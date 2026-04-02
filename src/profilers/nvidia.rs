@@ -114,12 +114,12 @@ impl Profiler for NvidiaProfiler {
 
             if let Ok(util) = device.utilization_rates() {
                 metrics.push(Metric {
-                    name: "kys_gpu_utilization_percent",
+                    name: "hpcexp_gpu_utilization_percent",
                     labels: labels.clone(),
                     value: util.gpu as f64,
                 });
                 metrics.push(Metric {
-                    name: "kys_gpu_memory_utilization_percent",
+                    name: "hpcexp_gpu_memory_utilization_percent",
                     labels: labels.clone(),
                     value: util.memory as f64,
                 });
@@ -127,17 +127,17 @@ impl Profiler for NvidiaProfiler {
 
             if let Ok(mem) = device.memory_info() {
                 metrics.push(Metric {
-                    name: "kys_gpu_memory_total_bytes",
+                    name: "hpcexp_gpu_memory_total_bytes",
                     labels: labels.clone(),
                     value: mem.total as f64,
                 });
                 metrics.push(Metric {
-                    name: "kys_gpu_memory_used_bytes",
+                    name: "hpcexp_gpu_memory_used_bytes",
                     labels: labels.clone(),
                     value: mem.used as f64,
                 });
                 metrics.push(Metric {
-                    name: "kys_gpu_memory_free_bytes",
+                    name: "hpcexp_gpu_memory_free_bytes",
                     labels: labels.clone(),
                     value: mem.free as f64,
                 });
@@ -145,7 +145,7 @@ impl Profiler for NvidiaProfiler {
 
             if let Ok(temp) = device.temperature(TemperatureSensor::Gpu) {
                 metrics.push(Metric {
-                    name: "kys_gpu_temperature_celsius",
+                    name: "hpcexp_gpu_temperature_celsius",
                     labels: labels.clone(),
                     value: temp as f64,
                 });
@@ -153,7 +153,7 @@ impl Profiler for NvidiaProfiler {
 
             if let Ok(power) = device.power_usage() {
                 metrics.push(Metric {
-                    name: "kys_gpu_power_usage_watts",
+                    name: "hpcexp_gpu_power_usage_watts",
                     labels: labels.clone(),
                     value: power as f64 / 1000.0,
                 });
@@ -161,7 +161,7 @@ impl Profiler for NvidiaProfiler {
 
             if let Ok(clock) = device.clock_info(Clock::Graphics) {
                 metrics.push(Metric {
-                    name: "kys_gpu_clock_graphics_mhz",
+                    name: "hpcexp_gpu_clock_graphics_mhz",
                     labels: labels.clone(),
                     value: clock as f64,
                 });
@@ -169,7 +169,7 @@ impl Profiler for NvidiaProfiler {
 
             if let Ok(clock) = device.clock_info(Clock::Memory) {
                 metrics.push(Metric {
-                    name: "kys_gpu_clock_memory_mhz",
+                    name: "hpcexp_gpu_clock_memory_mhz",
                     labels: labels.clone(),
                     value: clock as f64,
                 });
@@ -177,7 +177,7 @@ impl Profiler for NvidiaProfiler {
 
             if let Ok(fan) = device.fan_speed(0) {
                 metrics.push(Metric {
-                    name: "kys_gpu_fan_speed_percent",
+                    name: "hpcexp_gpu_fan_speed_percent",
                     labels: labels.clone(),
                     value: fan as f64,
                 });
@@ -216,13 +216,13 @@ impl Profiler for NvidiaProfiler {
             let labels = Self::job_labels(jobid, stepid, gpu_uuid);
 
             metrics.push(Metric {
-                name: "kys_gpu_job_memory_used_bytes",
+                name: "hpcexp_gpu_job_memory_used_bytes",
                 labels: labels.clone(),
                 value: snap.memory_bytes as f64,
             });
 
             metrics.push(Metric {
-                name: "kys_gpu_job_process_count",
+                name: "hpcexp_gpu_job_process_count",
                 labels,
                 value: snap.process_count as f64,
             });

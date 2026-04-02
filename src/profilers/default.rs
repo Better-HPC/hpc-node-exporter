@@ -33,12 +33,12 @@ impl Profiler for DefaultProfiler {
 
         Ok(vec![
             Metric {
-                name: "kys_running_jobs",
+                name: "hpcexp_running_jobs",
                 labels: vec![("hostname", HOSTNAME.clone())],
                 value: unique_jobs.len() as f64,
             },
             Metric {
-                name: "kys_scrape_time",
+                name: "hpcexp_scrape_time",
                 labels: vec![("hostname", HOSTNAME.clone())],
                 value: epoch_time.as_secs_f64(),
             },
