@@ -8,9 +8,12 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use axum::extract::State;
+use axum::http::header;
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
+use bytes::Bytes;
 use log::info;
 use tokio::net::TcpListener;
 
@@ -20,12 +23,18 @@ async fn status_handler() -> StatusCode {
 }
 
 /// Returns the latest Prometheus-format metrics snapshot.
-async fn metrics_handler(State(snapshot): State<Arc<ArcSwap<String>>>) -> String {
-    snapshot.load().as_ref().clone()
+async fn metrics_handler(State(snapshot): State<Arc<ArcSwap<Bytes>>>) -> impl IntoResponse {
+    let body = snapshot.load().as_ref().clone(); // clones the Bytes handle, not the data
+    let header = (
+        header::CONTENT_TYPE,
+        "text/plain; version=0.0.4; charset=utf-8",
+    );
+
+    ([header], body)
 }
 
 /// Builds the Axum router with shared application state.
-fn build_router(snapshot: Arc<ArcSwap<String>>) -> Router {
+fn build_router(snapshot: Arc<ArcSwap<Bytes>>) -> Router {
     Router::new()
         .route("/", get(status_handler))
         .route("/metrics", get(metrics_handler))
@@ -45,7 +54,7 @@ fn build_router(snapshot: Arc<ArcSwap<String>>) -> Router {
 pub async fn serve(
     host: &str,
     port: u16,
-    snapshot: Arc<ArcSwap<String>>,
+    snapshot: Arc<ArcSwap<Bytes>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let router = build_router(snapshot);
     let addr = format!("{host}:{port}");
