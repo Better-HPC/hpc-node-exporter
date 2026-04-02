@@ -79,27 +79,27 @@ impl SystemProfiler {
 
         let mut metrics = vec![
             Metric {
-                name: "kys_sys_cpu_usage_percent",
+                name: "hpcexp_sys_cpu_usage_percent",
                 labels: Self::node_labels(),
                 value: total_cpu,
             },
             Metric {
-                name: "kys_sys_cpu_count",
+                name: "hpcexp_sys_cpu_count",
                 labels: Self::node_labels(),
                 value: cpu_count,
             },
             Metric {
-                name: "kys_sys_load_avg_1m",
+                name: "hpcexp_sys_load_avg_1m",
                 labels: Self::node_labels(),
                 value: load.one,
             },
             Metric {
-                name: "kys_sys_load_avg_5m",
+                name: "hpcexp_sys_load_avg_5m",
                 labels: Self::node_labels(),
                 value: load.five,
             },
             Metric {
-                name: "kys_sys_load_avg_15m",
+                name: "hpcexp_sys_load_avg_15m",
                 labels: Self::node_labels(),
                 value: load.fifteen,
             },
@@ -108,7 +108,7 @@ impl SystemProfiler {
         // Per-core utilization
         for (i, cpu) in cpus.iter().enumerate() {
             metrics.push(Metric {
-                name: "kys_sys_cpu_core_usage_percent",
+                name: "hpcexp_sys_cpu_core_usage_percent",
                 labels: Self::core_labels(i),
                 value: cpu.cpu_usage() as f64,
             });
@@ -123,32 +123,32 @@ impl SystemProfiler {
 
         vec![
             Metric {
-                name: "kys_sys_memory_total_bytes",
+                name: "hpcexp_sys_memory_total_bytes",
                 labels: Self::node_labels(),
                 value: self.sys.total_memory() as f64,
             },
             Metric {
-                name: "kys_sys_memory_used_bytes",
+                name: "hpcexp_sys_memory_used_bytes",
                 labels: Self::node_labels(),
                 value: self.sys.used_memory() as f64,
             },
             Metric {
-                name: "kys_sys_memory_available_bytes",
+                name: "hpcexp_sys_memory_available_bytes",
                 labels: Self::node_labels(),
                 value: self.sys.available_memory() as f64,
             },
             Metric {
-                name: "kys_sys_swap_total_bytes",
+                name: "hpcexp_sys_swap_total_bytes",
                 labels: Self::node_labels(),
                 value: self.sys.total_swap() as f64,
             },
             Metric {
-                name: "kys_sys_swap_used_bytes",
+                name: "hpcexp_sys_swap_used_bytes",
                 labels: Self::node_labels(),
                 value: self.sys.used_swap() as f64,
             },
             Metric {
-                name: "kys_sys_swap_free_bytes",
+                name: "hpcexp_sys_swap_free_bytes",
                 labels: Self::node_labels(),
                 value: self.sys.free_swap() as f64,
             },
@@ -219,37 +219,37 @@ impl SystemProfiler {
             let labels = Self::job_labels(jobid, stepid);
 
             metrics.push(Metric {
-                name: "kys_sys_job_cpu_usage_percent",
+                name: "hpcexp_sys_job_cpu_usage_percent",
                 labels: labels.clone(),
                 value: snap.cpu_usage as f64,
             });
 
             metrics.push(Metric {
-                name: "kys_sys_job_memory_used_bytes",
+                name: "hpcexp_sys_job_memory_used_bytes",
                 labels: labels.clone(),
                 value: snap.memory_bytes as f64,
             });
 
             metrics.push(Metric {
-                name: "kys_sys_job_virtual_memory_bytes",
+                name: "hpcexp_sys_job_virtual_memory_bytes",
                 labels: labels.clone(),
                 value: snap.virtual_memory_bytes as f64,
             });
 
             metrics.push(Metric {
-                name: "kys_sys_job_io_read_bytes",
+                name: "hpcexp_sys_job_io_read_bytes",
                 labels: labels.clone(),
                 value: snap.io_read_bytes as f64,
             });
 
             metrics.push(Metric {
-                name: "kys_sys_job_io_write_bytes",
+                name: "hpcexp_sys_job_io_write_bytes",
                 labels: labels.clone(),
                 value: snap.io_written_bytes as f64,
             });
 
             metrics.push(Metric {
-                name: "kys_sys_job_process_count",
+                name: "hpcexp_sys_job_process_count",
                 labels,
                 value: snap.process_count as f64,
             });
