@@ -39,7 +39,7 @@ impl Profiler for DefaultProfiler {
         Ok(vec![
             MetricFamily::from_samples(
                 "hpcexp_running_jobs",
-                "Number of HPC jobs currently running on this node.",
+                "Number of HPC jobs currently running on the node.",
                 MetricType::Gauge,
                 vec![MetricSample {
                     labels: hostname_label.clone(),

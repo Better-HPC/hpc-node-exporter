@@ -1,14 +1,15 @@
-//! Core metric types for Prometheus text exposition format.
+//! Core types and structures for Prometheus metrics.
 //!
-//! Defines [`MetricFamily`], [`Sample`], and [`MetricType`] — the shared
-//! data model used by all profilers and rendered by the background
-//! collector.
+//! Each hardware measurement is recorded as a [`MetricSample`], which pair a
+//! numeric value with a set of identifying labels. Related samples are
+//! grouped into a [`MetricFamily`], combining the samples with a shared name,
+//! help string, and [`MetricType`].
 
 /// The Prometheus metric type.
 #[derive(Debug, Clone, Copy)]
 pub enum MetricType {
-    Counter,
-    Gauge,
+    Counter, // Always increasing
+    Gauge,   // Can increase or decrease
 }
 
 impl MetricType {
@@ -20,17 +21,17 @@ impl MetricType {
     }
 }
 
-/// A single labeled sample within a [`MetricFamily`].
+/// A single metric value.
 #[derive(Debug)]
 pub struct MetricSample {
     pub labels: Vec<(&'static str, String)>,
     pub value: f64,
 }
 
-/// A Prometheus metric family: one `# HELP`, one `# TYPE`, and one or more samples.
+/// A collection of related Prometheus metrics.
 ///
 /// All samples share the same metric name, type, and help string. Labels
-/// differentiate individual time series within the family.
+/// differentiate individual samples within the family.
 #[derive(Debug)]
 pub struct MetricFamily {
     pub name: &'static str,
@@ -57,7 +58,12 @@ impl MetricFamily {
         metric_type: MetricType,
         samples: Vec<MetricSample>,
     ) -> Self {
-        Self { name, help, metric_type, samples }
+        Self {
+            name,
+            help,
+            metric_type,
+            samples,
+        }
     }
 
     /// Appends a sample to this family.
@@ -92,7 +98,6 @@ impl MetricFamily {
         );
 
         for sample in &self.samples {
-
             let labels: Vec<String> = sample
                 .labels
                 .iter()
