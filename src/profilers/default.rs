@@ -8,7 +8,8 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::time::SystemTime;
 
-use crate::profilers::{Metric, Profiler, HOSTNAME};
+use crate::metrics::{MetricFamily, MetricSample, MetricType};
+use crate::profilers::{Profiler, HOSTNAME};
 use crate::schedulers::HpcProcess;
 
 /// A [`Profiler`] that reports baseline HPC scheduler metrics.
@@ -27,21 +28,33 @@ impl DefaultProfiler {
 
 impl Profiler for DefaultProfiler {
     /// Returns high level status metrics.
-    fn collect_metrics(&mut self, processes: &[HpcProcess]) -> Result<Vec<Metric>, Box<dyn Error>> {
+    fn collect_metrics(
+        &mut self,
+        processes: &[HpcProcess],
+    ) -> Result<Vec<MetricFamily>, Box<dyn Error>> {
         let epoch_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let unique_jobs: HashSet<&str> = processes.iter().map(|p| p.jobid.as_str()).collect();
+        let hostname_label = vec![("hostname", HOSTNAME.clone())];
 
         Ok(vec![
-            Metric {
-                name: "hpcexp_running_jobs",
-                labels: vec![("hostname", HOSTNAME.clone())],
-                value: unique_jobs.len() as f64,
-            },
-            Metric {
-                name: "hpcexp_scrape_time",
-                labels: vec![("hostname", HOSTNAME.clone())],
-                value: epoch_time.as_secs_f64(),
-            },
+            MetricFamily::from_samples(
+                "hpcexp_running_jobs",
+                "Number of HPC jobs currently running on the node.",
+                MetricType::Gauge,
+                vec![MetricSample {
+                    labels: hostname_label.clone(),
+                    value: unique_jobs.len() as f64,
+                }],
+            ),
+            MetricFamily::from_samples(
+                "hpcexp_scrape_time",
+                "Unix timestamp of the last metrics collection pass.",
+                MetricType::Gauge,
+                vec![MetricSample {
+                    labels: hostname_label,
+                    value: epoch_time.as_secs_f64(),
+                }],
+            ),
         ])
     }
 }

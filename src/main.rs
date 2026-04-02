@@ -9,6 +9,7 @@ mod cli;
 mod collector;
 mod profilers;
 mod schedulers;
+mod metrics;
 
 use arc_swap::ArcSwap;
 use log::{error, info};
