@@ -3,7 +3,7 @@ name = "hpc-node-exporter"
 version = "0.0.0"
 edition = "2021"
 description = "An HPC telemetry agent designed for HPC systems."
-
+license = "GPL-3"
 
 [dependencies]
 arc-swap = "1.9.0"
