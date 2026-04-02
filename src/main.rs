@@ -26,29 +26,13 @@ use crate::profilers::Profiler;
 use crate::schedulers::slurm::SlurmScheduler;
 use crate::schedulers::HpcScheduler;
 
-/// Configures logging to syslog and optionally to stdout.
-///
-/// # Errors
-///
-/// Returns an error if the syslog socket cannot be opened or the
-/// global logger has already been set.
+/// Configures optional to stdout.
 fn init_logging(quiet: bool) -> Result<(), Box<dyn Error>> {
-    let syslog_formatter = syslog::Formatter3164 {
-        facility: syslog::Facility::LOG_USER,
-        hostname: None,
-        process: "hpc-node-exporter".to_owned(),
-        pid: 0,
-    };
-
-    let format =
-        |out: fern::FormatCallback, message: &std::fmt::Arguments, record: &log::Record| {
-            out.finish(format_args!("[{}] {}", record.level(), message))
-        };
-
     let mut config = fern::Dispatch::new()
         .level(log::LevelFilter::Info)
-        .format(format)
-        .chain(syslog::unix(syslog_formatter)?);
+        .format(|out, message, record| {
+            out.finish(format_args!("[{}] {}", record.level(), message))
+        });
 
     if !quiet {
         config = config.chain(std::io::stdout());

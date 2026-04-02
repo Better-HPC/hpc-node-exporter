@@ -335,7 +335,6 @@ dependencies = [
  "log",
  "nvml-wrapper",
  "sysinfo",
- "syslog",
  "tokio",
  "wait-timeout",
 ]

@@ -14,6 +14,5 @@ gethostname = "1.1.0"
 log = "0.4.27"
 nvml-wrapper = "0.12.0"
 sysinfo = "0.38.2"
-syslog = "7.0.0"
 tokio = { version = "1.50.0", features = ["rt-multi-thread", "macros", "net"] }
 wait-timeout = "0.2.1"
