@@ -1,0 +1,50 @@
+name: 🤖 Build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Set the version number of the compiled application.'
+        default: '0.0.0'
+        required: false
+        type: string
+
+jobs:
+  build-rpm:
+    name: RPM Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Cargo utilities
+        run: cargo install cargo-generate-rpm cargo-edit
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Set package version
+        run: cargo set-version ${{ inputs.version }}
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Generate RPM
+        run: cargo generate-rpm
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: keystone-exporter-rpm
+          path: target/generate-rpm/*.rpm
