@@ -90,8 +90,7 @@ impl SystemProfiler {
             .with_memory()
             .with_disk_usage();
 
-        self.sys
-            .refresh_processes_specifics(ProcessesToUpdate::Some(&pids), false, refresh_kind);
+        self.sys.refresh_processes_specifics(ProcessesToUpdate::Some(&pids), false, refresh_kind);
 
         let mut jobs: HashMap<(String, String), SystemJobSnapshot> = HashMap::new();
         for proc in processes {
@@ -124,138 +123,124 @@ impl SystemProfiler {
 
     /// Collects CPU metrics across all cores.
     fn collect_cpu(&mut self) -> Vec<MetricFamily> {
-        self.sys.refresh_cpu_usage();
+        let mut cpu_usage_metrics = MetricFamily::new(
+            "hpcexp_sys_cpu_usage_percent",
+            "Total CPU usage across all cores as a percentage.",
+            MetricType::Gauge,
+        );
 
-        let cpus = self.sys.cpus();
-        let cpu_count = cpus.len() as f64;
-        let total_cpu: f64 = cpus.iter().map(|c| c.cpu_usage() as f64).sum();
+        let mut cpu_count_metrics = MetricFamily::new(
+            "hpcexp_sys_cpu_count",
+            "Number of logical CPU cores available on this node.",
+            MetricType::Gauge,
+        );
 
-        let load = System::load_average();
-        let labels = Self::node_labels();
+        let mut load_1m_metrics = MetricFamily::new(
+            "hpcexp_sys_load_avg_1m",
+            "System load average over the last 1 minute.",
+            MetricType::Gauge,
+        );
 
-        let mut families = vec![
-            MetricFamily::from_samples(
-                "hpcexp_sys_cpu_usage_percent",
-                "Total CPU usage across all cores as a percentage.",
-                MetricType::Gauge,
-                vec![MetricSample {
-                    labels: labels.clone(),
-                    value: total_cpu,
-                }],
-            ),
-            MetricFamily::from_samples(
-                "hpcexp_sys_cpu_count",
-                "Number of logical CPU cores available on this node.",
-                MetricType::Gauge,
-                vec![MetricSample {
-                    labels: labels.clone(),
-                    value: cpu_count,
-                }],
-            ),
-            MetricFamily::from_samples(
-                "hpcexp_sys_load_avg_1m",
-                "System load average over the last 1 minute.",
-                MetricType::Gauge,
-                vec![MetricSample {
-                    labels: labels.clone(),
-                    value: load.one,
-                }],
-            ),
-            MetricFamily::from_samples(
-                "hpcexp_sys_load_avg_5m",
-                "System load average over the last 5 minutes.",
-                MetricType::Gauge,
-                vec![MetricSample {
-                    labels: labels.clone(),
-                    value: load.five,
-                }],
-            ),
-            MetricFamily::from_samples(
-                "hpcexp_sys_load_avg_15m",
-                "System load average over the last 15 minutes.",
-                MetricType::Gauge,
-                vec![MetricSample {
-                    labels,
-                    value: load.fifteen,
-                }],
-            ),
-        ];
+        let mut load_5m_metrics = MetricFamily::new(
+            "hpcexp_sys_load_avg_5m",
+            "System load average over the last 5 minutes.",
+            MetricType::Gauge,
+        );
 
-        // Per-core utilization: all cores share one family, one sample each.
-        let mut core_usage = MetricFamily::new(
+        let mut load_15m_metrics = MetricFamily::new(
+            "hpcexp_sys_load_avg_15m",
+            "System load average over the last 15 minutes.",
+            MetricType::Gauge,
+        );
+
+        let mut core_usage_metrics = MetricFamily::new(
             "hpcexp_sys_cpu_core_usage_percent",
             "CPU usage per logical core as a percentage.",
             MetricType::Gauge,
         );
 
+        let labels = Self::node_labels();
+        self.sys.refresh_cpu_usage();
+
+        let cpus = self.sys.cpus();
+        let load = System::load_average();
+        let total_cpu = cpus.iter().map(|c| c.cpu_usage() as f64).sum();
+
+        cpu_usage_metrics.add(labels.clone(), total_cpu);
+        cpu_count_metrics.add(labels.clone(), cpus.len() as f64);
+        load_1m_metrics.add(labels.clone(), load.one);
+        load_5m_metrics.add(labels.clone(), load.five);
+        load_15m_metrics.add(labels, load.fifteen);
+
         for (i, cpu) in cpus.iter().enumerate() {
-            core_usage.add(Self::core_labels(i), cpu.cpu_usage() as f64);
+            core_usage_metrics.add(Self::core_labels(i), cpu.cpu_usage() as f64);
         }
 
-        families.push(core_usage);
-        families
+        vec![
+            cpu_usage_metrics,
+            cpu_count_metrics,
+            load_1m_metrics,
+            load_5m_metrics,
+            load_15m_metrics,
+            core_usage_metrics,
+        ]
     }
 
     /// Returns physical memory and swap metrics.
     fn collect_memory(&mut self) -> Vec<MetricFamily> {
-        self.sys.refresh_memory();
+        let mut mem_total_metrics = MetricFamily::new(
+            "hpcexp_sys_memory_total_bytes",
+            "Total physical memory available on this node in bytes.",
+            MetricType::Gauge,
+        );
+
+        let mut mem_used_metrics = MetricFamily::new(
+            "hpcexp_sys_memory_used_bytes",
+            "Physical memory currently in use on this node in bytes.",
+            MetricType::Gauge,
+        );
+
+        let mut mem_avail_metrics = MetricFamily::new(
+            "hpcexp_sys_memory_available_bytes",
+            "Physical memory currently available on this node in bytes.",
+            MetricType::Gauge,
+        );
+
+        let mut swap_total_metrics = MetricFamily::new(
+            "hpcexp_sys_swap_total_bytes",
+            "Total swap space on this node in bytes.",
+            MetricType::Gauge,
+        );
+
+        let mut swap_used_metrics = MetricFamily::new(
+            "hpcexp_sys_swap_used_bytes",
+            "Swap space currently in use on this node in bytes.",
+            MetricType::Gauge,
+        );
+
+        let mut swap_free_metrics = MetricFamily::new(
+            "hpcexp_sys_swap_free_bytes",
+            "Swap space currently free on this node in bytes.",
+            MetricType::Gauge,
+        );
+
         let labels = Self::node_labels();
+        self.sys.refresh_memory();
+
+        mem_total_metrics.add(labels.clone(), self.sys.total_memory() as f64);
+        mem_used_metrics.add(labels.clone(), self.sys.used_memory() as f64);
+        mem_avail_metrics.add(labels.clone(), self.sys.available_memory() as f64);
+        swap_total_metrics.add(labels.clone(), self.sys.total_swap() as f64);
+        swap_used_metrics.add(labels.clone(), self.sys.used_swap() as f64);
+        swap_free_metrics.add(labels, self.sys.free_swap() as f64);
 
         vec![
-            MetricFamily::from_samples(
-                "hpcexp_sys_memory_total_bytes",
-                "Total physical memory available on this node in bytes.",
-                MetricType::Gauge,
-                vec![MetricSample {
-                    labels: labels.clone(),
-                    value: self.sys.total_memory() as f64,
-                }],
-            ),
-            MetricFamily::from_samples(
-                "hpcexp_sys_memory_used_bytes",
-                "Physical memory currently in use on this node in bytes.",
-                MetricType::Gauge,
-                vec![MetricSample {
-                    labels: labels.clone(),
-                    value: self.sys.used_memory() as f64,
-                }],
-            ),
-            MetricFamily::from_samples(
-                "hpcexp_sys_memory_available_bytes",
-                "Physical memory currently available on this node in bytes.",
-                MetricType::Gauge,
-                vec![MetricSample {
-                    labels: labels.clone(),
-                    value: self.sys.available_memory() as f64,
-                }],
-            ),
-            MetricFamily::from_samples(
-                "hpcexp_sys_swap_total_bytes",
-                "Total swap space on this node in bytes.",
-                MetricType::Gauge,
-                vec![MetricSample {
-                    labels: labels.clone(),
-                    value: self.sys.total_swap() as f64,
-                }],
-            ),
-            MetricFamily::from_samples(
-                "hpcexp_sys_swap_used_bytes",
-                "Swap space currently in use on this node in bytes.",
-                MetricType::Gauge,
-                vec![MetricSample {
-                    labels: labels.clone(),
-                    value: self.sys.used_swap() as f64,
-                }],
-            ),
-            MetricFamily::from_samples(
-                "hpcexp_sys_swap_free_bytes",
-                "Swap space currently free on this node in bytes.",
-                MetricType::Gauge,
-                vec![MetricSample {
-                    labels: labels.clone(),
-                    value: self.sys.free_swap() as f64,
-                }],
-            ),
+            mem_total_metrics,
+            mem_used_metrics,
+            mem_avail_metrics,
+            swap_total_metrics,
+            swap_used_metrics,
+            swap_free_metrics,
         ]
     }
 
@@ -269,37 +254,37 @@ impl SystemProfiler {
             return Vec::new();
         }
 
-        let mut cpu = MetricFamily::new(
+        let mut cpu_metrics = MetricFamily::new(
             "hpcexp_sys_job_cpu_usage_percent",
             "Total CPU usage for an HPC job step across all its processes, as a percentage.",
             MetricType::Gauge,
         );
 
-        let mut mem = MetricFamily::new(
+        let mut mem_metrics = MetricFamily::new(
             "hpcexp_sys_job_memory_used_bytes",
             "Physical memory used by an HPC job step across all its processes, in bytes.",
             MetricType::Gauge,
         );
 
-        let mut vmem = MetricFamily::new(
+        let mut vmem_metrics = MetricFamily::new(
             "hpcexp_sys_job_virtual_memory_bytes",
             "Virtual memory used by an HPC job step across all its processes, in bytes.",
             MetricType::Gauge,
         );
 
-        let mut io_read = MetricFamily::new(
+        let mut io_read_metrics = MetricFamily::new(
             "hpcexp_sys_job_io_read_bytes",
             "Bytes read from disk by an HPC job step since it started.",
             MetricType::Counter,
         );
 
-        let mut io_write = MetricFamily::new(
+        let mut io_write_metrics = MetricFamily::new(
             "hpcexp_sys_job_io_write_bytes",
             "Bytes written to disk by an HPC job step since it started.",
             MetricType::Counter,
         );
 
-        let mut procs = MetricFamily::new(
+        let mut procs_metrics = MetricFamily::new(
             "hpcexp_sys_job_process_count",
             "Number of running processes belonging to an HPC job step.",
             MetricType::Gauge,
@@ -307,15 +292,22 @@ impl SystemProfiler {
 
         for ((jobid, stepid), snap) in &snapshots {
             let labels = Self::job_labels(jobid, stepid);
-            cpu.add(labels.clone(), snap.cpu_usage as f64);
-            mem.add(labels.clone(), snap.memory_bytes as f64);
-            vmem.add(labels.clone(), snap.virtual_memory_bytes as f64);
-            io_read.add(labels.clone(), snap.io_read_bytes as f64);
-            io_write.add(labels.clone(), snap.io_written_bytes as f64);
-            procs.add(labels, snap.process_count as f64);
+            cpu_metrics.add(labels.clone(), snap.cpu_usage as f64);
+            mem_metrics.add(labels.clone(), snap.memory_bytes as f64);
+            vmem_metrics.add(labels.clone(), snap.virtual_memory_bytes as f64);
+            io_read_metrics.add(labels.clone(), snap.io_read_bytes as f64);
+            io_write_metrics.add(labels.clone(), snap.io_written_bytes as f64);
+            procs_metrics.add(labels, snap.process_count as f64);
         }
 
-        vec![cpu, mem, vmem, io_read, io_write, procs]
+        vec![
+            cpu_metrics,
+            mem_metrics,
+            vmem_metrics,
+            io_read_metrics,
+            io_write_metrics,
+            procs_metrics,
+        ]
     }
 }
 
