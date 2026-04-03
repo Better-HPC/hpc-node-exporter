@@ -32,16 +32,11 @@ impl Profiler for DefaultProfiler {
         &mut self,
         processes: &[HpcProcess],
     ) -> Result<Vec<MetricFamily>, Box<dyn Error>> {
-        let labels = vec![("hostname", HOSTNAME.clone())];
-
         let mut running_jobs = MetricFamily::new(
             "hpcexp_running_jobs",
             "Number of HPC jobs currently running on the node.",
             MetricType::Gauge,
         );
-
-        let unique_jobs: HashSet<&str> = processes.iter().map(|p| p.jobid.as_str()).collect();
-        running_jobs.add(labels.clone(), unique_jobs.len() as f64);
 
         let mut scrape_time = MetricFamily::new(
             "hpcexp_scrape_time",
@@ -49,7 +44,11 @@ impl Profiler for DefaultProfiler {
             MetricType::Gauge,
         );
 
+        let labels = vec![("hostname", HOSTNAME.clone())];
+        let unique_jobs: HashSet<&str> = processes.iter().map(|p| p.jobid.as_str()).collect();
         let epoch_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+
+        running_jobs.add(labels.clone(), unique_jobs.len() as f64);
         scrape_time.add(labels, epoch_time.as_secs_f64());
 
         Ok(vec![running_jobs, scrape_time])
