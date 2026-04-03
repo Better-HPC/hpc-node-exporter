@@ -44,7 +44,7 @@ jobs:
         run: cargo generate-rpm
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: keystone-exporter-rpm
           path: target/generate-rpm/*.rpm
