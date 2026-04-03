@@ -8,7 +8,7 @@ use std::error::Error;
 use log::warn;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
-use crate::metrics::{MetricFamily, MetricSample, MetricType};
+use crate::metrics::{MetricFamily, MetricType};
 use crate::profilers::{Profiler, HOSTNAME};
 use crate::schedulers::HpcProcess;
 
