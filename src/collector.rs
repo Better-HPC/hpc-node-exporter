@@ -15,7 +15,14 @@ use crate::profilers::Profiler;
 use crate::schedulers::HpcScheduler;
 use bytes::Bytes;
 
-// Note: buf is now BytesMut, snapshot stores Bytes
+/// Spawns a background thread that collects metrics on a fixed `interval`.
+///
+/// Each iteration calls every [`Profiler`] in `profilers`, renders the
+/// results into Prometheus text format, and publishes the snapshot via
+/// `snapshot` for lock-free reads by the HTTP layer.
+///
+/// Panics within a collection pass are caught and logged; the previous
+/// snapshot is retained until the next successful iteration.
 pub fn spawn(
     mut profilers: Vec<Box<dyn Profiler + Send>>,
     scheduler: Box<dyn HpcScheduler + Send>,
@@ -23,10 +30,25 @@ pub fn spawn(
     interval: Duration,
 ) {
     thread::spawn(move || {
+        // A memory buffer to store metrics while they are being aggregated
         let mut buf = bytes::BytesMut::new();
+
         loop {
-            collect_into_buffer(&mut profilers, &*scheduler, &mut buf);
-            snapshot.store(Arc::new(buf.split().freeze()));
+            // Collect hardware metrics and load them into the buffer
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                collect_into_buffer(&mut profilers, &*scheduler, &mut buf);
+            }));
+
+            // Clear the buffer and pre-allocate the same amount of space used in the last iteration
+            if let Err(e) = result {
+                error!("collector panicked, skipping iteration: {:?}", e);
+                buf.clear();
+            } else {
+                let last_len = buf.len();
+                snapshot.store(Arc::new(buf.split().freeze()));
+                buf.reserve(last_len);
+            }
+
             thread::sleep(interval);
         }
     });
