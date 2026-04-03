@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::time::SystemTime;
 
-use crate::metrics::{MetricFamily, MetricSample, MetricType};
+use crate::metrics::{MetricFamily, MetricType};
 use crate::profilers::{Profiler, HOSTNAME};
 use crate::schedulers::HpcProcess;
 
@@ -32,29 +32,26 @@ impl Profiler for DefaultProfiler {
         &mut self,
         processes: &[HpcProcess],
     ) -> Result<Vec<MetricFamily>, Box<dyn Error>> {
-        let epoch_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
-        let unique_jobs: HashSet<&str> = processes.iter().map(|p| p.jobid.as_str()).collect();
-        let hostname_label = vec![("hostname", HOSTNAME.clone())];
+        let labels = vec![("hostname", HOSTNAME.clone())];
 
-        Ok(vec![
-            MetricFamily::from_samples(
-                "hpcexp_running_jobs",
-                "Number of HPC jobs currently running on the node.",
-                MetricType::Gauge,
-                vec![MetricSample {
-                    labels: hostname_label.clone(),
-                    value: unique_jobs.len() as f64,
-                }],
-            ),
-            MetricFamily::from_samples(
-                "hpcexp_scrape_time",
-                "Unix timestamp of the last metrics collection pass.",
-                MetricType::Gauge,
-                vec![MetricSample {
-                    labels: hostname_label,
-                    value: epoch_time.as_secs_f64(),
-                }],
-            ),
-        ])
+        let mut running_jobs = MetricFamily::new(
+            "hpcexp_running_jobs",
+            "Number of HPC jobs currently running on the node.",
+            MetricType::Gauge,
+        );
+
+        let unique_jobs: HashSet<&str> = processes.iter().map(|p| p.jobid.as_str()).collect();
+        running_jobs.add(labels.clone(), unique_jobs.len() as f64);
+
+        let mut scrape_time = MetricFamily::new(
+            "hpcexp_scrape_time",
+            "Unix timestamp of the last metrics collection pass.",
+            MetricType::Gauge,
+        );
+
+        let epoch_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+        scrape_time.add(labels, epoch_time.as_secs_f64());
+
+        Ok(vec![running_jobs, scrape_time])
     }
 }
