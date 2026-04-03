@@ -1,1 +1,45 @@
-site_name: HPC Node Exporter
+site_name: hpc-node-exporter
+site_description: A job-aware Prometheus exporter for HPC systems.
+license: GPL-3.0
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - md_in_html
+
+nav:
+  - Getting Started:
+      - Overview: index.md
+      - installation.md
+  - Metrics Reference:
+      - metrics/default.md
+      - metrics/system.md
+      - metrics/nvidia.md
+  - Development:
+      - architecture.md

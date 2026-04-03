@@ -1,81 +1,73 @@
-# HPC Node Exporter
+# hpc-node-exporter
 
-A job-aware Prometheus exporter designed for the HPC systems.
+`hpc-node-exporter` is a job-aware Prometheus exporter for HPC systems. Unlike general-purpose node exporters,
+it correlates hardware telemetry directly with the jobs and job steps running on each node, enabling per-job
+resource accounting alongside traditional node-level metrics.
 
-The exporter runs on HPC compute nodes and exposes hardware telemetry combined with metadata from the
-underlying HPC scheduler. This telemetry is published over HTTP in Prometheus format, enabling operators to monitor
-resource consumption at the node and job level.
+The exporter is designed to run as a lightweight daemon on each compute node, exposing a `/metrics` endpoint
+that Prometheus can scrape on a configurable interval.
 
-## Developer Quickstart
+!!! note "Scheduler Support"
+The exporter currently supports [Slurm](https://slurm.schedmd.com/) as its job scheduler backend.
+See the [Architecture](development/architecture.md) page for details on adding support for other schedulers.
 
-The standard `run` command is used to build and launch a development version of the exporter.
-Commandline flags are used to enable various hardware profilers.
-For example:
+---
+
+## Quick Start
+
+### 1. Run the exporter
+
+Start the exporter with the profilers appropriate for your hardware:
 
 ```bash
-cargo run -- --system
+# CPU and memory metrics only
+hpc-node-exporter --system
+
+# CPU, memory, and NVIDIA GPU metrics
+hpc-node-exporter --system --nvidia
 ```
 
-The exporter will begin serving metrics at http://127.0.0.1:9105/metrics.
-To verify the exporter is running:
+By default, the exporter listens on `127.0.0.1:9105`. To expose it on a specific interface:
 
 ```bash
-# Health check
-curl -s http://127.0.0.1:9105/
-
-# Fetch metrics
-curl -s http://127.0.0.1:9105/metrics
+hpc-node-exporter --system --nvidia --host 0.0.0.0 --port 9105
 ```
 
-The exporter requires Slurm's `scontrol` to be available on the host in order to discover active jobs.
-On nodes without Slurm, the exporter will still run but job-level metrics will not be reported.
+### 2. Add a Prometheus scrape target
 
-## Architecture
+Add the following to your Prometheus configuration:
 
-The exporter is structured around four primary subsystems: a scheduler interface, a set of hardware profilers,
-a metrics collector, and an HTTP server.
-These components are connected through a shared, lock-free snapshot that decouples metric collection from request
-serving.
+```yaml
+scrape_configs:
+  - job_name: hpc-node-exporter
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - node01:9105
+          - node02:9105
+```
 
-<p align="center">
-  <img src="assets/architecture.svg" />
-</p>
+!!! tip
+The exporter's internal collection interval (`--interval`) and the Prometheus scrape interval are
+independent. Setting the scrape interval shorter than the collection interval will return the same
+snapshot repeatedly without additional overhead.
 
-### Scheduler
+### 3. Verify
 
-The scheduler is responsible for discovering HPC jobs running on the local node and their corresponding process IDs.
-This information is later used to aggregate hardware usage on a per-job level.
+```bash
+curl http://localhost:9105/metrics
+```
 
-### Profilers
+You should see output similar to:
 
-Profilers are responsible for measuring hardware utilization at the global and job levels.
-Each profiler is responsible for a different hardware type and returns updated metric values on each collection pass:
+```
+# HELP hpcexp_running_jobs Number of HPC jobs currently running on the node.
+# TYPE hpcexp_running_jobs gauge
+hpcexp_running_jobs{hostname="node01"} 3.0000
+```
 
-- **Default** — Always enabled. Reports general metadata for the underlying scheduler and exporter status.
-- **System** — Opt-in via `--system`. Collects CPU and memory resource usage through the OS process interface.
-- **NVIDIA** — Opt-in via `--nvidia`. Collects GPU telemetry through the NVIDIA Management Library (NVML).
+---
 
-Profiler failures are isolated and partial results are always preferred over a complete failure.
-If a profiler fails to collect an individual metric, the remaining metrics will still render.
+## License
 
-### Collection Loop
-
-Hardware profiling is run as a loop in a dedicated background thread.
-On each iteration, the thread queries the scheduler for active jobs, passes the result to every enabled profiler,
-renders the collected metrics into a Prometheus-format string, and publishes the result to a shared memory object.
-The loop then sleeps for a configurable interval before repeating.
-
-### Metrics Snapshot
-
-The metrics snapshot is shared between the collection thread and the HTTP server.
-The collection thread atomically updates the snapshot on every profiling pass, allowing HTTP handlers to load the
-latest snapshot without blocking the collector.
-This design decouples HTTP response latency from the metrics collection time.
-It also isolates the collection process from incoming HTTP requests, protecting the collector from high request volumes
-and potential DOS attacks.
-
-### HTTP Server
-
-The HTTP server exposes two routes: a root health check endpoint (`/`) and the metrics endpoint (`/metrics`).
-Prometheus metrics are read directly from the shared snapshot, minimizing the overhead incurred by incoming HTTP
-requests.
+`hpc-node-exporter` is released under the [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html).
