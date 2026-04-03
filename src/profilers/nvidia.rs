@@ -91,55 +91,55 @@ impl Profiler for NvidiaProfiler {
             "GPU core utilization as a percentage.",
             MetricType::Gauge,
         );
-        
+
         let mut mem_util = MetricFamily::new(
             "hpcexp_gpu_memory_utilization_percent",
             "GPU memory controller utilization as a percentage.",
             MetricType::Gauge,
         );
-        
+
         let mut mem_total = MetricFamily::new(
             "hpcexp_gpu_memory_total_bytes",
             "Total GPU memory on this device in bytes.",
             MetricType::Gauge,
         );
-        
+
         let mut mem_used = MetricFamily::new(
             "hpcexp_gpu_memory_used_bytes",
             "GPU memory currently in use on this device in bytes.",
             MetricType::Gauge,
         );
-        
+
         let mut mem_free = MetricFamily::new(
             "hpcexp_gpu_memory_free_bytes",
             "GPU memory currently free on this device in bytes.",
             MetricType::Gauge,
         );
-        
+
         let mut temp = MetricFamily::new(
             "hpcexp_gpu_temperature_celsius",
             "GPU core temperature in degrees Celsius.",
             MetricType::Gauge,
         );
-        
+
         let mut power = MetricFamily::new(
             "hpcexp_gpu_power_usage_watts",
             "GPU power draw in watts.",
             MetricType::Gauge,
         );
-        
+
         let mut clock_graphics = MetricFamily::new(
             "hpcexp_gpu_clock_graphics_mhz",
             "Current GPU graphics clock speed in MHz.",
             MetricType::Gauge,
         );
-        
+
         let mut clock_memory = MetricFamily::new(
             "hpcexp_gpu_clock_memory_mhz",
             "Current GPU memory clock speed in MHz.",
             MetricType::Gauge,
         );
-        
+
         let mut fan = MetricFamily::new(
             "hpcexp_gpu_fan_speed_percent",
             "GPU fan speed as a percentage of maximum.",
@@ -228,7 +228,7 @@ impl Profiler for NvidiaProfiler {
                     UsedGpuMemory::Used(bytes) => bytes,
                     UsedGpuMemory::Unavailable => 0,
                 };
-                
+
                 snap.process_count += 1;
             }
         }
@@ -239,7 +239,7 @@ impl Profiler for NvidiaProfiler {
             "GPU memory used by an HPC job step on a specific device, in bytes.",
             MetricType::Gauge,
         );
-        
+
         let mut job_procs = MetricFamily::new(
             "hpcexp_gpu_job_process_count",
             "Number of processes belonging to an HPC job step running on a specific GPU.",

@@ -3,7 +3,6 @@
 //! Discovers active jobs and their PIDs by parsing `scontrol listpids`
 //! output. Pending processes (PID `-1`) are excluded.
 
-use std::collections::HashMap;
 use std::error::Error;
 use std::io;
 use std::io::Read;
