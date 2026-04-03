@@ -21,6 +21,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Cargo utilities
+        run: cargo install cargo-generate-rpm cargo-edit
+
       - name: Cache cargo registry and build
         uses: actions/cache@v4
         with:
@@ -32,13 +35,10 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Set package version
-        run: sed -i "s/^version = \"0.0.0\"/version = \"${{ inputs.version }}\"/" Cargo.toml
+        run: cargo set-version ${{ inputs.version }}
 
       - name: Build release binary
         run: cargo build --release
-
-      - name: Install cargo-generate-rpm
-        run: cargo install cargo-generate-rpm
 
       - name: Generate RPM
         run: cargo generate-rpm
