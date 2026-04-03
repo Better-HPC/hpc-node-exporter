@@ -40,6 +40,8 @@ impl SystemProfiler {
             return Err("SystemProfiler: OS not supported by sysinfo".into());
         }
 
+        // System usage is calculated as a delta between measurements.
+        // Preload the first measurement at init so latter measurements are valid.
         let mut sys = System::new();
         sys.refresh_cpu_usage();
 
