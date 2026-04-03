@@ -1,0 +1,36 @@
+name: 🤖 Publish Package
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Set the version number of the published application.'
+        default: '0.0.0'
+        required: false
+        type: string
+
+jobs:
+  publish-rpm:
+    name: Python Distribution
+    runs-on: ubuntu-latest
+
+    environment:
+      name: cloudsmith
+      url: https://app.cloudsmith.com/better-hpc/hpc-node-exporter
+
+    steps:
+      - name: Fetch build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: hpc-node-exporter-rpm
+          path: dist
+
+      - name: Publish package
+        uses: cloudsmith-io/action@master
+        with:
+          api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
+          command: "push"
+          format: "python"
+          owner: "better-hpc"
+          repo: "hpc-node-exporter"
+          file: "target/generate-rpm/hpc-node-exporter-${{ inputs.version }}-1.x86_64.rpm"
