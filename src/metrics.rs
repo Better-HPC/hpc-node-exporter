@@ -51,21 +51,6 @@ impl MetricFamily {
         }
     }
 
-    /// Creates a new family pre-populated with `samples`.
-    pub fn from_samples(
-        name: &'static str,
-        help: &'static str,
-        metric_type: MetricType,
-        samples: Vec<MetricSample>,
-    ) -> Self {
-        Self {
-            name,
-            help,
-            metric_type,
-            samples,
-        }
-    }
-
     /// Appends a sample to this family.
     pub fn add(&mut self, labels: Vec<(&'static str, String)>, value: f64) {
         self.samples.push(MetricSample { labels, value });

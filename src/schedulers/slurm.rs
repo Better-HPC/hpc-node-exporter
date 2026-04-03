@@ -3,7 +3,6 @@
 //! Discovers active jobs and their PIDs by parsing `scontrol listpids`
 //! output. Pending processes (PID `-1`) are excluded.
 
-use std::collections::HashMap;
 use std::error::Error;
 use std::io;
 use std::io::Read;
@@ -110,18 +109,19 @@ impl SlurmScheduler {
     /// Returns an error naming every required column that is missing
     /// from the header.
     fn parse_scontrol_header(header: &str) -> Result<ScontrolColumns, Box<dyn Error>> {
-        // Map column names to their index
-        let columns: HashMap<&str, usize> = header
-            .split_whitespace()
-            .enumerate()
-            .map(|(i, name)| (name, i))
-            .collect();
+        let mut pid = None;
+        let mut jobid = None;
+        let mut stepid = None;
 
-        let pid = columns.get(COL_PID).copied();
-        let jobid = columns.get(COL_JOBID).copied();
-        let stepid = columns.get(COL_STEPID).copied();
+        for (i, name) in header.split_whitespace().enumerate() {
+            match name {
+                COL_PID => pid = Some(i),
+                COL_JOBID => jobid = Some(i),
+                COL_STEPID => stepid = Some(i),
+                _ => {}
+            }
+        }
 
-        // Check for missing columns
         let required = [(COL_PID, pid), (COL_JOBID, jobid), (COL_STEPID, stepid)];
         let missing: Vec<&str> = required
             .iter()
