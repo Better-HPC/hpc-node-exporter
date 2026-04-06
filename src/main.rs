@@ -9,6 +9,7 @@ mod cli;
 mod collector;
 mod metrics;
 mod profilers;
+mod push;
 mod schedulers;
 
 use arc_swap::ArcSwap;
@@ -29,11 +30,12 @@ use crate::schedulers::HpcScheduler;
 
 /// Configures optional logging to stdout.
 fn init_logging(quiet: bool) -> Result<(), Box<dyn Error>> {
-    let mut config = fern::Dispatch::new()
-        .level(log::LevelFilter::Info)
-        .format(|out, message, record| {
-            out.finish(format_args!("[{}] {}", record.level(), message))
-        });
+    let mut config =
+        fern::Dispatch::new()
+            .level(log::LevelFilter::Info)
+            .format(|out, message, record| {
+                out.finish(format_args!("[{}] {}", record.level(), message))
+            });
 
     if !quiet {
         config = config.chain(std::io::stdout());
@@ -62,7 +64,6 @@ fn init_profilers(
 ) -> Result<Vec<Box<dyn Profiler + Send>>, Box<dyn Error>> {
     let mut profilers: Vec<Box<dyn Profiler + Send>> = Vec::new();
 
-    // The default profiler is always enabled
     let default_profiler = DefaultProfiler::new();
     profilers.push(Box::new(default_profiler));
 
@@ -93,17 +94,28 @@ async fn main() {
         std::process::exit(1);
     });
 
-    // Launch metrics collection
     let metrics_store = Arc::new(ArcSwap::from_pointee(Bytes::new()));
+
+    // If a push URL is configured, start the push subsystem.
+    let notify_tx = args.push_url.as_ref().map(|url| {
+        push::run(
+            Arc::clone(&metrics_store),
+            url.clone(),
+            push::DEFAULT_BUFFER_SIZE,
+            push::DEFAULT_WORKER_COUNT,
+            Duration::from_secs(args.push_timeout),
+        )
+    });
+
+    // Launch metrics collection
     collector::run(
         hardware_profilers,
         hpc_scheduler,
         Arc::clone(&metrics_store),
         Duration::from_secs(args.interval),
-        None,
+        notify_tx,
     );
 
-    // Launch metrics server
     info!("starting HTTP server on {}:{}", args.host, args.port);
     api::run(&args.host, args.port, metrics_store)
         .await
