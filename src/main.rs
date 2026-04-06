@@ -27,14 +27,13 @@ use crate::profilers::Profiler;
 use crate::schedulers::slurm::SlurmScheduler;
 use crate::schedulers::HpcScheduler;
 
-/// Configures optional to stdout.
+/// Configures optional logging to stdout.
 fn init_logging(quiet: bool) -> Result<(), Box<dyn Error>> {
-    let mut config =
-        fern::Dispatch::new()
-            .level(log::LevelFilter::Info)
-            .format(|out, message, record| {
-                out.finish(format_args!("[{}] {}", record.level(), message))
-            });
+    let mut config = fern::Dispatch::new()
+        .level(log::LevelFilter::Info)
+        .format(|out, message, record| {
+            out.finish(format_args!("[{}] {}", record.level(), message))
+        });
 
     if !quiet {
         config = config.chain(std::io::stdout());
@@ -96,11 +95,12 @@ async fn main() {
 
     // Launch metrics collection
     let metrics_store = Arc::new(ArcSwap::from_pointee(Bytes::new()));
-    collector::spawn(
+    collector::run(
         hardware_profilers,
         hpc_scheduler,
         Arc::clone(&metrics_store),
         Duration::from_secs(args.interval),
+        None,
     );
 
     // Launch metrics server
