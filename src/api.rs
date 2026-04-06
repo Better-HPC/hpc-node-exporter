@@ -51,7 +51,7 @@ fn build_router(snapshot: Arc<ArcSwap<Bytes>>) -> Router {
 ///
 /// Returns an error if the TCP listener fails to bind or the server
 /// encounters a fatal I/O error.
-pub async fn serve(
+pub async fn run(
     host: &str,
     port: u16,
     snapshot: Arc<ArcSwap<Bytes>>,

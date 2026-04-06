@@ -105,7 +105,7 @@ async fn main() {
 
     // Launch metrics server
     info!("starting HTTP server on {}:{}", args.host, args.port);
-    api::serve(&args.host, args.port, metrics_store)
+    api::run(&args.host, args.port, metrics_store)
         .await
         .unwrap_or_else(|e| {
             error!("server error: {e}");
