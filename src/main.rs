@@ -88,7 +88,7 @@ async fn main() {
     init_logging(args.quiet).expect("Failed to initialize logging");
 
     // Initialize system interfaces
-    let hpc_scheduler = init_hpc_scheduler(Duration::from_secs(args.sched_timeout));
+    let hpc_scheduler = init_hpc_scheduler(Duration::from_secs(args.timeout));
     let hardware_profilers = init_profilers(args.system, args.nvidia).unwrap_or_else(|e| {
         error!("failed to initialize profilers: {e}");
         std::process::exit(1);
