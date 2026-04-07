@@ -94,6 +94,7 @@ async fn main() {
         std::process::exit(1);
     });
 
+    // Create a shared memory buffer for collected metrics
     let metrics_store = Arc::new(ArcSwap::from_pointee(Bytes::new()));
 
     // If a push URL is configured, start the push subsystem.
@@ -116,6 +117,7 @@ async fn main() {
         notify_tx,
     );
 
+    // Launch the metrics server
     info!("starting HTTP server on {}:{}", args.host, args.port);
     api::run(&args.host, args.port, metrics_store)
         .await

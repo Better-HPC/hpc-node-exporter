@@ -6,8 +6,8 @@
 use clap::Parser;
 
 const PROFILE_HEADER: &str = "Profiling";
-const PROM_HEADER: &str = "Serve Metrics";
-const DB_HEADER: &str = "Push Metrics";
+const SERVE_HEADER: &str = "Serve Metrics";
+const PUSH_HEADER: &str = "Push Metrics";
 
 #[derive(Parser, Debug)]
 #[command(
@@ -50,7 +50,7 @@ pub struct Args {
     #[arg(
         long,
         default_value = "127.0.0.1",
-        help_heading = PROM_HEADER
+        help_heading = SERVE_HEADER
     )]
     pub host: String,
 
@@ -58,12 +58,12 @@ pub struct Args {
     #[arg(
         long,
         default_value_t = 9105,
-        help_heading = PROM_HEADER
+        help_heading = SERVE_HEADER
     )]
     pub port: u16,
 
-    /// Post metrics in Prometheus format to the given URL.
-    #[arg(long, value_name = "URL", help_heading = DB_HEADER)]
+    /// Optionally POST metrics in Prometheus format to the given URL.
+    #[arg(long, value_name = "URL", help_heading = PUSH_HEADER)]
     pub push_url: Option<String>,
 
     /// Timeout in seconds for an individual POST request.
@@ -72,7 +72,7 @@ pub struct Args {
         default_value_t = 10,
         value_name = "SECONDS",
         requires = "push_url",
-        help_heading = DB_HEADER
+        help_heading = PUSH_HEADER
     )]
     pub push_timeout: u64,
 }

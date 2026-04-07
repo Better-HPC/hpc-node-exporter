@@ -6,18 +6,18 @@ description = "An HPC telemetry agent designed for HPC systems."
 license = "GPL-3"
 
 [dependencies]
-arc-swap = "1.9.0"
+arc-swap = "1.9.1"
 axum = "0.8.8"
 bytes = "1.11.1"
-clap = { version = "4.5.60", features = ["derive"] }
-fern = { version = "0.7", features = ["syslog-7"] }
+clap = { version = "4.6.0", features = ["derive"] }
+fern = { version = "0.7.1", features = ["syslog-7"] }
 gethostname = "1.1.0"
-log = "0.4.27"
-nvml-wrapper = "0.12.0"
-sysinfo = "0.38.2"
-tokio = { version = "1.50.0", features = ["rt-multi-thread", "macros", "net"] }
-wait-timeout = "0.2.1"
+log = "0.4.29"
+nvml-wrapper = "0.12.1"
 reqwest = "0.13.2"
+sysinfo = "0.38.4"
+tokio = { version = "1.51.0", features = ["rt-multi-thread", "macros", "net"] }
+wait-timeout = "0.2.1"
 
 [profile.release]
 codegen-units = 1

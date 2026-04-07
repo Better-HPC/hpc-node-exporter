@@ -19,8 +19,8 @@ use crate::schedulers::HpcScheduler;
 /// Spawns a background thread that collects metrics on a fixed `interval`.
 ///
 /// Each iteration calls every [`Profiler`] in `profilers`, renders the
-/// results into Prometheus text format, and publishes the snapshot via
-/// `snapshot` for lock-free reads by the HTTP layer.
+/// results into Prometheus text format, and publishes results to the
+/// `snapshot` memory buffer.
 ///
 /// If `notify` is provided, a signal is sent after each successful snapshot
 /// store so that other components (e.g. the push subsystem) can react to
@@ -36,26 +36,27 @@ pub fn run(
     notify: Option<watch::Sender<()>>,
 ) {
     thread::spawn(move || {
-        // A memory buffer to store metrics while they are being aggregated
+        // An internal buffer used to store metrics while they are being collected
         let mut buf = bytes::BytesMut::new();
 
         loop {
-            // Collect hardware metrics and load them into the buffer
-            // An error here wil result in no metrics collected
+            // Collect hardware metrics from each profiler
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 collect_into_buffer(&mut profilers, &*scheduler, &mut buf);
             }));
 
-            // Clear the buffer and pre-allocate the same amount of space for the next iteration
+            // On failure - clear the buffer
             if let Err(e) = result {
                 error!("collector panicked, skipping iteration: {:?}", e);
                 buf.clear();
+
+            // On success - move data from the internal buffer to the snapshot
+            // Reallocate space for the internal buffer and notify any listeners
             } else {
                 let last_len = buf.len();
                 snapshot.store(Arc::new(buf.split().freeze()));
                 buf.reserve(last_len);
 
-                // Notify any listeners that a fresh snapshot is available.
                 if let Some(tx) = &notify {
                     let _ = tx.send(());
                 }

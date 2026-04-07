@@ -1,8 +1,7 @@
 //! Background push delivery of metrics to a remote endpoint.
 //!
-//! This module delivers each freshly-collected snapshot to the remote
-//! endpoint via HTTP POST. Collection and scraping are entirely
-//! unaffected by the health or responsiveness of the remote endpoint.
+//! This module delivers each freshly-collected snapshot to a remote
+//! endpoint via HTTP POST.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,10 +25,8 @@ pub const DEFAULT_WORKER_COUNT: usize = 4;
 /// Starts the push subsystem.
 ///
 /// Spawns a push loop task and a pool of worker tasks. Returns a
-/// [`watch::Sender`] that the collector should signal after each new snapshot
-/// is stored. If the sender is dropped, the push loop exits cleanly.
-///
-/// This function returns immediately — all work happens in the background.
+/// [`watch::Sender`] used to signal when new snapshot is available
+/// to be pushed.
 pub fn run(
     snapshot: Arc<ArcSwap<Bytes>>,
     url: String,
@@ -64,8 +61,7 @@ pub fn run(
 ///
 /// Loads the current snapshot from the [`ArcSwap`] on each notification and
 /// attempts to send it into the bounded channel. If the channel is full the
-/// snapshot is dropped and a warning is logged — this is the explicit and
-/// intentional point of data loss under overload.
+/// snapshot is dropped and a warning is logged.
 async fn run_push_loop(
     snapshot: Arc<ArcSwap<Bytes>>,
     mut notify: watch::Receiver<()>,
@@ -74,14 +70,13 @@ async fn run_push_loop(
     loop {
         // Wait for the collector to signal a new snapshot is available.
         if notify.changed().await.is_err() {
-            // The sender has been dropped, meaning the collector has shut down.
-            // Nothing left to do.
+            // The sender has shut down, meaning there is nothing left to do.
             return;
         }
 
         let bytes = snapshot.load().as_ref().clone();
 
-        // Skip empty snapshots that may appear before the first collection pass.
+        // Skip empty data to avoid unnecessary POST requests.
         if bytes.is_empty() {
             continue;
         }
@@ -113,8 +108,7 @@ async fn run_worker(
             let mut rx = rx.lock().await;
             match rx.recv().await {
                 Some(b) => b,
-                // Channel closed, collector and push loop have both shut down.
-                None => return,
+                None => return, // Channel closed, collector and push loop have both shut down.
             }
         };
 
