@@ -9,6 +9,7 @@ mod cli;
 mod collector;
 mod metrics;
 mod profilers;
+mod push;
 mod schedulers;
 
 use arc_swap::ArcSwap;
@@ -27,7 +28,7 @@ use crate::profilers::Profiler;
 use crate::schedulers::slurm::SlurmScheduler;
 use crate::schedulers::HpcScheduler;
 
-/// Configures optional to stdout.
+/// Configures optional logging to stdout.
 fn init_logging(quiet: bool) -> Result<(), Box<dyn Error>> {
     let mut config =
         fern::Dispatch::new()
@@ -63,7 +64,6 @@ fn init_profilers(
 ) -> Result<Vec<Box<dyn Profiler + Send>>, Box<dyn Error>> {
     let mut profilers: Vec<Box<dyn Profiler + Send>> = Vec::new();
 
-    // The default profiler is always enabled
     let default_profiler = DefaultProfiler::new();
     profilers.push(Box::new(default_profiler));
 
@@ -88,24 +88,38 @@ async fn main() {
     init_logging(args.quiet).expect("Failed to initialize logging");
 
     // Initialize system interfaces
-    let hpc_scheduler = init_hpc_scheduler(Duration::from_secs(args.sched_timeout));
+    let hpc_scheduler = init_hpc_scheduler(Duration::from_secs(args.timeout));
     let hardware_profilers = init_profilers(args.system, args.nvidia).unwrap_or_else(|e| {
         error!("failed to initialize profilers: {e}");
         std::process::exit(1);
     });
 
-    // Launch metrics collection
+    // Create a shared memory buffer for collected metrics
     let metrics_store = Arc::new(ArcSwap::from_pointee(Bytes::new()));
-    collector::spawn(
+
+    // If a push URL is configured, start the push subsystem.
+    let notify_tx = args.push_url.as_ref().map(|url| {
+        push::run(
+            Arc::clone(&metrics_store),
+            url.clone(),
+            push::DEFAULT_BUFFER_SIZE,
+            push::DEFAULT_WORKER_COUNT,
+            Duration::from_secs(args.push_timeout),
+        )
+    });
+
+    // Launch metrics collection
+    collector::run(
         hardware_profilers,
         hpc_scheduler,
         Arc::clone(&metrics_store),
         Duration::from_secs(args.interval),
+        notify_tx,
     );
 
-    // Launch metrics server
+    // Launch the metrics server
     info!("starting HTTP server on {}:{}", args.host, args.port);
-    api::serve(&args.host, args.port, metrics_store)
+    api::run(&args.host, args.port, metrics_store)
         .await
         .unwrap_or_else(|e| {
             error!("server error: {e}");
