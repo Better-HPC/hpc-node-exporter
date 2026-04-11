@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use arc_swap::ArcSwap;
 use bytes::Bytes;
@@ -40,7 +40,10 @@ pub fn run(
         let mut buf = bytes::BytesMut::new();
 
         loop {
-            // Collect hardware metrics from each profiler
+            // Determine when the next collection is supposed to start
+            let deadline = Instant::now() + interval;
+
+            // Execute the current metrics collection
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 collect_into_buffer(&mut profilers, &*scheduler, &mut buf);
             }));
@@ -62,7 +65,15 @@ pub fn run(
                 }
             }
 
-            thread::sleep(interval);
+            // Sleep until the next metrics collection is scheduled to start
+            // Begin immediately if the previous collection overran the deadline
+            match deadline.checked_duration_since(Instant::now()) {
+                Some(remaining) => thread::sleep(remaining),
+                None => warn!(
+                    "collection pass exceeded the configured interval ({interval:?}); \
+                     consider increasing --interval"
+                ),
+            }
         }
     });
 }
